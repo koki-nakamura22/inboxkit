@@ -29,6 +29,10 @@ __pycache__/
 .pyright/
 dist/
 build/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
 # --- env ---
 .env

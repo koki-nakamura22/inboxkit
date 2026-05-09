@@ -12,7 +12,6 @@ import pytest
 
 from digestkit.cli import main
 
-
 # Minimal valid Digester module: 2 items, no failures, seen_store=None (no SQLite)
 _VALID_DIGESTER_MODULE = """\
 from digestkit.digester import Digester

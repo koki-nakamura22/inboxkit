@@ -30,7 +30,7 @@ class FailureInfo:
 class RunResult:
     success: int = 0
     skipped: int = 0
-    failures: list[FailureInfo] = field(default_factory=list)
+    failures: list[FailureInfo] = field(default_factory=lambda: [])
 
 
 class Digester:

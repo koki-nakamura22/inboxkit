@@ -12,7 +12,7 @@ import pytest
 
 
 def test_seen_store_skips_item_on_second_run(tmp_path: object) -> None:
-    """AC-014: 同一 Item.id で run() を 2 回. 2 回目で当該 Item が skip され RunResult.skipped == 1."""
+    """AC-014: 同一 Item.id で run() を 2 回. 2 回目で skip され RunResult.skipped == 1."""
     pytest.fail("not yet implemented")
 
 

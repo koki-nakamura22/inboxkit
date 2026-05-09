@@ -6,13 +6,12 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import pytest
 
-from digestkit.digester import ConfigurationError, Digester, DigestkitError, RunResult
+from digestkit.digester import ConfigurationError, Digester, DigestkitError
 from digestkit.types import Digest, Item
-
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -56,31 +55,39 @@ class _SpyExtractor:
 
 
 class _SpySummarizer:
-    def __init__(self) -> None:
+    def __init__(self, fail_on: set[str] | None = None) -> None:
         self.calls: list[tuple[str, Item]] = []
+        self._fail_on = fail_on or set()
 
     def summarize(self, text: str, item: Item) -> Digest:
         self.calls.append((text, item))
+        if item.id in self._fail_on:
+            raise RuntimeError(f"summarize failed: {item.id}")
         return _stub_digest(item)
 
 
 class _SpySink:
-    def __init__(self) -> None:
+    def __init__(self, fail_on: set[str] | None = None) -> None:
         self.calls: list[tuple[Digest, Item]] = []
+        self._fail_on = fail_on or set()
 
     def write(self, digest: Digest, item: Item) -> None:
         self.calls.append((digest, item))
+        if item.id in self._fail_on:
+            raise RuntimeError(f"write failed: {item.id}")
 
 
 def _make_digester(
     items: list[Item],
-    fail_on: set[str] | None = None,
+    extract_fail_on: set[str] | None = None,
+    summarize_fail_on: set[str] | None = None,
+    sink_fail_on: set[str] | None = None,
 ) -> tuple[Digester, _SpyExtractor, _SpySummarizer, _SpySink]:
     # Use underscore-prefixed locals to avoid name clash with class attribute names
     # (Python class bodies don't form closures over enclosing function locals)
-    _ext = _SpyExtractor(fail_on=fail_on)
-    _sum = _SpySummarizer()
-    _snk = _SpySink()
+    _ext = _SpyExtractor(fail_on=extract_fail_on)
+    _sum = _SpySummarizer(fail_on=summarize_fail_on)
+    _snk = _SpySink(fail_on=sink_fail_on)
 
     class _ConcreteDigester(Digester):
         source = _StubSource(items)
@@ -98,7 +105,7 @@ def _make_digester(
 
 
 def test_digester_run_processes_all_items_in_order() -> None:
-    """AC-001: Source.fetch -> Extractor.extract -> Summarizer.summarize -> Sink.write が順次実行され、3 件の Item で Sink.write が 3 回呼ばれる."""
+    """AC-001: 3 件 Item で Source→Extractor→Summarizer→Sink が順次実行 Sink.write 3 回."""
     # Arrange
     items = _make_items(3)
     d, extractor, summarizer, sink = _make_digester(items)
@@ -139,7 +146,7 @@ def test_digester_run_returns_runresult_with_correct_counts() -> None:
         (1, 1),
         (3, 3),
         (5, 5),
-        (6, 5),   # Source が 5 件しか返さないので min(limit, 5)
+        (6, 5),  # Source が 5 件しか返さないので min(limit, 5)
         (None, 5),
     ],
 )
@@ -187,6 +194,7 @@ def test_digester_run_dry_run_skips_sink_write() -> None:
 
 def test_digester_subclass_missing_source_raises_at_instantiation() -> None:
     """AC-001c: source 属性を欠いた Digester サブクラスは __init__ で ConfigurationError."""
+
     # Arrange
     class _NoSource(Digester):
         extractor = _SpyExtractor()
@@ -200,6 +208,7 @@ def test_digester_subclass_missing_source_raises_at_instantiation() -> None:
 
 def test_digester_subclass_missing_extractor_raises_at_instantiation() -> None:
     """AC-001c: extractor 属性を欠いた Digester サブクラスは __init__ で ConfigurationError."""
+
     # Arrange
     class _NoExtractor(Digester):
         source = _StubSource([])
@@ -213,6 +222,7 @@ def test_digester_subclass_missing_extractor_raises_at_instantiation() -> None:
 
 def test_digester_subclass_missing_summarizer_raises_at_instantiation() -> None:
     """AC-001c: summarizer 属性を欠いた Digester サブクラスは __init__ で ConfigurationError."""
+
     # Arrange
     class _NoSummarizer(Digester):
         source = _StubSource([])
@@ -226,6 +236,7 @@ def test_digester_subclass_missing_summarizer_raises_at_instantiation() -> None:
 
 def test_digester_subclass_missing_sink_raises_at_instantiation() -> None:
     """AC-001c: sink 属性を欠いた Digester サブクラスは __init__ で ConfigurationError."""
+
     # Arrange
     class _NoSink(Digester):
         source = _StubSource([])
@@ -239,6 +250,7 @@ def test_digester_subclass_missing_sink_raises_at_instantiation() -> None:
 
 def test_digester_subclass_missing_all_raises_with_clear_message() -> None:
     """AC-001c: 全属性欠落時、例外メッセージに欠けている属性名すべてが含まれる."""
+
     # Arrange
     class _EmptyDigester(Digester):
         pass
@@ -257,10 +269,10 @@ def test_digester_subclass_missing_all_raises_with_clear_message() -> None:
 
 
 def test_digester_run_continues_after_single_item_extraction_failure() -> None:
-    """AC-R-001: 5 件中 3 件目の Extractor が例外を投げても残りを処理. RunResult.success==4 / failures==1."""
+    """AC-R-001: 3 件目 extract 失敗でも残り 4 件を処理. success==4 / failures==1."""
     # Arrange — item id "2" (3 件目, 0-indexed) が extract 時に失敗
     items = _make_items(5)
-    d, _, _, _ = _make_digester(items, fail_on={"2"})
+    d, _, _, _ = _make_digester(items, extract_fail_on={"2"})
 
     # Act
     result = d.run()
@@ -272,10 +284,10 @@ def test_digester_run_continues_after_single_item_extraction_failure() -> None:
 
 
 def test_digester_run_failure_list_contains_failing_item() -> None:
-    """AC-R-001: failures リストに失敗 Item の参照が含まれ、Sink.write は失敗 Item に対しては呼ばれない."""
+    """AC-R-001: failures に失敗 Item の参照が含まれ Sink.write は失敗 Item に対して呼ばれない."""
     # Arrange
     items = _make_items(5)
-    d, _, _, sink = _make_digester(items, fail_on={"2"})
+    d, _, _, sink = _make_digester(items, extract_fail_on={"2"})
 
     # Act
     result = d.run()
@@ -305,3 +317,58 @@ def test_configuration_error_is_digestkit_error() -> None:
 def test_digestkit_error_is_exception() -> None:
     """DigestkitError は Exception のサブクラスである."""
     assert issubclass(DigestkitError, Exception)
+
+
+# ---------------------------------------------------------------------------
+# 失敗ステージ網羅 (summarize / write)
+# ---------------------------------------------------------------------------
+
+
+def test_digester_run_continues_after_summarize_failure() -> None:
+    """summarize 失敗は failures に集約され、残り Item は処理継続する."""
+    # Arrange
+    items = _make_items(5)
+    d, _, _, sink = _make_digester(items, summarize_fail_on={"2"})
+
+    # Act
+    result = d.run()
+
+    # Assert
+    assert result.success == 4
+    assert len(result.failures) == 1
+    assert result.failures[0].item.id == "2"
+    assert result.failures[0].stage == "summarize"
+    assert len(sink.calls) == 4
+
+
+def test_digester_run_continues_after_sink_write_failure() -> None:
+    """sink.write 失敗は failures に集約され、残り Item は処理継続する."""
+    # Arrange
+    items = _make_items(5)
+    d, _, _, sink = _make_digester(items, sink_fail_on={"2"})
+
+    # Act
+    result = d.run()
+
+    # Assert
+    assert result.success == 4
+    assert len(result.failures) == 1
+    assert result.failures[0].item.id == "2"
+    assert result.failures[0].stage == "write"
+    # sink.write は "2" に対しても呼ばれている (失敗前に write が実行される)
+    assert len(sink.calls) == 5
+
+
+def test_digester_run_failure_info_contains_exception_instance() -> None:
+    """FailureInfo.error が実際の例外インスタンスを保持する."""
+    # Arrange
+    items = _make_items(2)
+    d, _, _, _ = _make_digester(items, extract_fail_on={"0"})
+
+    # Act
+    result = d.run()
+
+    # Assert
+    assert len(result.failures) == 1
+    assert isinstance(result.failures[0].error, RuntimeError)
+    assert "0" in str(result.failures[0].error)

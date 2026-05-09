@@ -6,9 +6,12 @@ from typing import Any
 import litellm
 from dotenv import load_dotenv
 
+from ..logging import get_logger
 from ..types import Digest, DigestkitError, Item
 
 load_dotenv()
+
+log = get_logger(__name__)
 
 
 class SummarizationError(DigestkitError):
@@ -49,10 +52,21 @@ class LLMSummarizer:
 
         summary: str = response.choices[0].message.content or ""
         usage: Any = response.usage
-        return Digest(
+        digest = Digest(
             summary=summary,
             tokens_in=getattr(usage, "prompt_tokens", 0),
             tokens_out=getattr(usage, "completion_tokens", 0),
             latency_ms=latency_ms,
             model=full_model,
         )
+        log.info(
+            "llm_call_completed",
+            extra={
+                "tokens_in": digest.tokens_in,
+                "tokens_out": digest.tokens_out,
+                "latency_ms": digest.latency_ms,
+                "provider": self._provider,
+                "model": self._model,
+            },
+        )
+        return digest

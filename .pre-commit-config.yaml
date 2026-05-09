@@ -1,0 +1,40 @@
+# pre-commit hook 設定 (Issue #15)
+#
+# 目的: CI lint / typecheck と同等のチェックを `git commit` 時にローカル強制し、
+#       整形漏れ・型エラーが remote に出ないようにする。
+#
+# 設計方針:
+#   - language: system + `uv run ...` を使い、workspace の dev 環境
+#     (全 extras 入り) で実行する。pyright は project 依存を解決できないと
+#     誤検出するため、ruff-pre-commit / pyright-python の独立 venv は使わない。
+#   - コマンド実体は Makefile に集約 (CI とのズレ防止)。
+#   - pass_filenames: false で常に packages/ 全体を走査。CI と完全一致させる。
+#
+# セットアップ: `make install-hooks`  (内部で `uv tool install pre-commit && pre-commit install`)
+# 緊急時の escape hatch: `git commit --no-verify`
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (make lint)
+        entry: make lint
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+
+      - id: ruff-format-check
+        name: ruff format --check (make format-check)
+        entry: make format-check
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+        # 失敗したら次のメッセージで `make format` 実行を促す
+        verbose: true
+
+      - id: pyright
+        name: pyright (make typecheck)
+        entry: make typecheck
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]

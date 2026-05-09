@@ -15,8 +15,10 @@ jobs:
       # インストールしないと、import や型解決が通らないため `--all-packages
       # --all-extras` を付与。
       - run: uv sync --all-packages --all-extras
-      - run: uv run ruff check packages/
-      - run: uv run ruff format --check packages/
+      # pre-commit hook (.pre-commit-config.yaml) と同じ Makefile ターゲットを呼び、
+      # ローカル / CI のチェック内容がズレないようにする (Issue #15)。
+      - run: make lint
+      - run: make format-check
 
   typecheck:
     runs-on: ubuntu-latest
@@ -27,7 +29,7 @@ jobs:
       # インストールしないと、import や型解決が通らないため `--all-packages
       # --all-extras` を付与。
       - run: uv sync --all-packages --all-extras
-      - run: uv run pyright packages/
+      - run: make typecheck
 
   test:
     strategy:

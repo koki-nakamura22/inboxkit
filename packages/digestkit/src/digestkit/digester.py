@@ -68,12 +68,32 @@ class Digester:
     # 内容ハッシュで dedup したい場合は ``digestkit.dedup.content_sha256_key``
     # を指定するか、独自の ``Callable[[Item], str]`` を渡す.
 
+    # Issue #13: コア 4 依存 (source/extractor/summarizer/sink) もコンストラクタ
+    # kwarg で受け取れるようにする (constructor injection). サブクラス class
+    # 属性を kwarg が override する (seen_store/dedup_key と同じハイブリッド
+    # パターン). factory method ではなく __init__ のシグネチャ拡張.
+
     def __init__(
         self,
         *,
+        source: Source | None = None,
+        extractor: Extractor | None = None,
+        summarizer: Summarizer | None = None,
+        sink: Sink | None = None,
         seen_store: SeenStore | None | _SeenStoreSentinel = _SEEN_STORE_UNSET,
         dedup_key: DedupKeyFn | _DedupKeySentinel = _DEDUP_KEY_UNSET,
     ) -> None:
+        # kwarg が渡されたものはインスタンス属性として設定 (class 属性を override).
+        # None のまま渡された場合は「未指定」扱いで、class 属性があればそれを使う.
+        if source is not None:
+            self.source = source
+        if extractor is not None:
+            self.extractor = extractor
+        if summarizer is not None:
+            self.summarizer = summarizer
+        if sink is not None:
+            self.sink = sink
+
         missing = [a for a in _REQUIRED_ATTRS if not hasattr(self, a)]
         if missing:
             raise ConfigurationError(f"Missing required attributes: {missing}")

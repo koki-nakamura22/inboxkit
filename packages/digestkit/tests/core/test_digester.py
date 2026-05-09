@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from pathlib import Path
 
 import pytest
@@ -21,7 +21,7 @@ from digestkit.types import Digest, DigestkitError, Item
 
 
 @pytest.fixture(autouse=True)
-def _clean_digestkit_cache() -> object:
+def _clean_digestkit_cache() -> Generator[None, None, None]:
     yield
     cache_dir = Path.home() / ".cache" / "digestkit"
     if cache_dir.exists():
@@ -79,6 +79,19 @@ class _SpySummarizer:
         if item.id in self._fail_on:
             raise RuntimeError(f"summarize failed: {item.id}")
         return _stub_digest(item)
+
+
+class _FakeSeenStore:
+    """In-memory SeenStore for tests that need a real seen_store."""
+
+    def __init__(self, seen: set[str] | None = None) -> None:
+        self._seen: set[str] = seen or set()
+
+    def has(self, item_id: str) -> bool:
+        return item_id in self._seen
+
+    def add(self, item_id: str) -> None:
+        self._seen.add(item_id)
 
 
 class _SpySink:
@@ -200,6 +213,34 @@ def test_digester_run_dry_run_skips_sink_write() -> None:
     # extract / summarize は呼ばれている
     assert len(extractor.calls) == 3
     assert len(summarizer.calls) == 3
+
+
+def test_digester_run_dry_run_ignores_seen_store() -> None:
+    """AC-T019-2: dry_run=True は seen_store に既存エントリがあっても全件 extract/summarize する."""
+    # Arrange — 全件 seen 済みの store を渡す
+    items = _make_items(3)
+    store = _FakeSeenStore(seen={"0", "1", "2"})
+    _ext = _SpyExtractor()
+    _sum = _SpySummarizer()
+    _snk = _SpySink()
+
+    class _ConcreteDigesterWithStore(Digester):
+        source = _StubSource(items)
+        extractor = _ext  # type: ignore[assignment]
+        summarizer = _sum  # type: ignore[assignment]
+        sink = _snk  # type: ignore[assignment]
+
+    d = _ConcreteDigesterWithStore(seen_store=store)
+
+    # Act
+    result = d.run(dry_run=True)
+
+    # Assert — seen_store check を skip して全件処理 (sink.write は dry_run で呼ばれない)
+    assert len(_ext.calls) == 3
+    assert len(_sum.calls) == 3
+    assert _snk.calls == []
+    assert result.skipped == 3
+    assert result.success == 0
 
 
 # ---------------------------------------------------------------------------

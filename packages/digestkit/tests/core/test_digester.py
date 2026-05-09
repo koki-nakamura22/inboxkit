@@ -428,3 +428,53 @@ def test_digester_run_failure_info_contains_exception_instance() -> None:
     assert len(result.failures) == 1
     assert isinstance(result.failures[0].error, RuntimeError)
     assert "0" in str(result.failures[0].error)
+
+
+# ---------------------------------------------------------------------------
+# Issue #10: Digester.run(length=) の Summarizer への passthrough
+# ---------------------------------------------------------------------------
+
+
+class _LengthAwareSummarizer:
+    """``length`` kw を受ける Summarizer."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Item, str | None]] = []
+
+    def summarize(
+        self, text: str, item: Item, *, length: str | None = None
+    ) -> Digest:
+        self.calls.append((text, item, length))
+        return _stub_digest(item)
+
+
+def test_run_without_length_does_not_pass_length_to_legacy_summarizer() -> None:
+    """run() で length 未指定なら、length 引数を持たない既存 Summarizer も従来どおり動く."""
+    items = _make_items(2)
+    d, _, summarizer, _ = _make_digester(items)
+
+    result = d.run()
+
+    assert result.success == 2
+    # _SpySummarizer.summarize は length 引数を受けない. run() が kw を渡さない
+    # ことが、TypeError 無しで完走している事実から確認できる.
+    assert len(summarizer.calls) == 2
+
+
+def test_run_length_is_passed_to_length_aware_summarizer() -> None:
+    """run(length=...) は length kw を Summarizer に転送する."""
+    items = _make_items(2)
+    _ext = _SpyExtractor()
+    _sum = _LengthAwareSummarizer()
+    _snk = _SpySink()
+
+    class _LengthDigester(Digester):
+        source = _StubSource(items)
+        extractor = _ext  # type: ignore[assignment]
+        summarizer = _sum  # type: ignore[assignment]
+        sink = _snk  # type: ignore[assignment]
+
+    d = _LengthDigester(seen_store=None)
+    d.run(length="detailed")
+
+    assert [c[2] for c in _sum.calls] == ["detailed", "detailed"]

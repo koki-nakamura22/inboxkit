@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from digestkit.types import DigestkitError
+from digestkit.types import DigestkitError, Item
 
 
 class DedupStoreError(DigestkitError):
@@ -51,3 +52,44 @@ class SQLiteSeenStore:
                 )
         except sqlite3.Error as e:
             raise DedupStoreError(str(e)) from e
+
+
+# ---------------------------------------------------------------------------
+# Built-in dedup key strategies (Issue #12)
+# ---------------------------------------------------------------------------
+
+# 既定の chunk size (8 MiB). 大きめのファイルでもメモリに乗せきらず、
+# 小さめなら 1 read で済む実用値.
+_HASH_CHUNK_BYTES = 8 * 1024 * 1024
+
+
+def item_id_key(item: Item) -> str:
+    """既定の dedup キー戦略: ``Item.id`` をそのまま使う.
+
+    ``Digester.dedup_key`` 未指定時の挙動と等価. 明示する用途や、
+    別の戦略と切り替える wrapper を書く時の baseline として公開する.
+    """
+    return item.id
+
+
+def content_sha256_key(item: Item) -> str:
+    """``Item.payload`` (``pathlib.Path``) の SHA-256 を dedup キーとして返す.
+
+    `LocalDirectorySource` のように payload が ``Path`` のソース向け. 同一内容
+    のファイルは絶対パスが違っても同じキーになり、内容差し替え時はキーが変わって
+    再要約が走る. Issue #12 のユースケース解決のためのヘルパ.
+
+    Raises:
+        TypeError: payload が ``Path`` でない時.
+    """
+    payload = item.payload
+    if not isinstance(payload, Path):
+        raise TypeError(
+            f"content_sha256_key requires Item.payload to be a pathlib.Path, "
+            f"got {type(payload).__name__}"
+        )
+    h = hashlib.sha256()
+    with payload.open("rb") as f:
+        for chunk in iter(lambda: f.read(_HASH_CHUNK_BYTES), b""):
+            h.update(chunk)
+    return f"sha256:{h.hexdigest()}"

@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, final
 
-from digestkit.dedup import SeenStore, SQLiteSeenStore, default_seen_store_path
+from digestkit.dedup import SeenStore, SQLiteSeenStore, default_seen_store_path, item_id_key
 from digestkit.protocols import Extractor, Sink, Source, Summarizer
 from digestkit.types import DigestkitError, Item
 
 logger = logging.getLogger(__name__)
 
 _REQUIRED_ATTRS = ("source", "extractor", "summarizer", "sink")
+
+DedupKeyFn = Callable[[Item], str]
 
 
 @final
@@ -19,6 +22,14 @@ class _SeenStoreSentinel:
 
 
 _SEEN_STORE_UNSET = _SeenStoreSentinel()
+
+
+@final
+class _DedupKeySentinel:
+    """Sentinel distinguishing "not provided" from explicit None in Digester.__init__."""
+
+
+_DEDUP_KEY_UNSET = _DedupKeySentinel()
 
 
 class ConfigurationError(DigestkitError):
@@ -51,8 +62,17 @@ class Digester:
     # If not overridden, __init__ creates the default SQLiteSeenStore.
     # Set seen_store = None in a subclass or pass seen_store=None to disable dedup.
 
+    # Issue #12: dedup キー戦略の差し替えポイント.
+    # Subclasses may override: dedup_key: DedupKeyFn = <fn>
+    # 既定は ``item_id_key`` (= ``Item.id`` をそのまま使う後方互換挙動).
+    # 内容ハッシュで dedup したい場合は ``digestkit.dedup.content_sha256_key``
+    # を指定するか、独自の ``Callable[[Item], str]`` を渡す.
+
     def __init__(
-        self, *, seen_store: SeenStore | None | _SeenStoreSentinel = _SEEN_STORE_UNSET
+        self,
+        *,
+        seen_store: SeenStore | None | _SeenStoreSentinel = _SEEN_STORE_UNSET,
+        dedup_key: DedupKeyFn | _DedupKeySentinel = _DEDUP_KEY_UNSET,
     ) -> None:
         missing = [a for a in _REQUIRED_ATTRS if not hasattr(self, a)]
         if missing:
@@ -63,6 +83,12 @@ class Digester:
         elif not hasattr(self, "seen_store"):
             self.seen_store = SQLiteSeenStore(default_seen_store_path(type(self).__name__))
         # else: subclass defined seen_store as class attribute; leave it as-is
+
+        if not isinstance(dedup_key, _DedupKeySentinel):
+            self.dedup_key: DedupKeyFn = dedup_key
+        elif not hasattr(self, "dedup_key"):
+            self.dedup_key = item_id_key
+        # else: subclass defined dedup_key as class attribute; leave it as-is
 
     def run(
         self,
@@ -91,10 +117,22 @@ class Digester:
             if limit is not None and processed >= limit:
                 break
 
-            if not dry_run and self.seen_store is not None and self.seen_store.has(item.id):
-                result.skipped += 1
-                processed += 1
-                continue
+            # Issue #12: dedup キーは ``self.dedup_key`` で計算する
+            # (既定では ``item.id``). キー計算自体の例外は extract と同様、
+            # 該当 Item のみを失敗扱いにして処理は継続する.
+            dedup_key_value: str | None = None
+            if not dry_run and self.seen_store is not None:
+                try:
+                    dedup_key_value = self.dedup_key(item)
+                except Exception as exc:
+                    logger.warning("dedup_key failed for item %s: %s", item.id, exc)
+                    result.failures.append(FailureInfo(item=item, stage="extract", error=exc))
+                    processed += 1
+                    continue
+                if self.seen_store.has(dedup_key_value):
+                    result.skipped += 1
+                    processed += 1
+                    continue
 
             try:
                 text = self.extractor.extract(item)
@@ -128,7 +166,10 @@ class Digester:
                     self.sink.write(digest, item)
                     result.success += 1
                     if self.seen_store is not None:
-                        self.seen_store.add(item.id)
+                        # dedup_key_value は dry_run=False かつ seen_store!=None の
+                        # この分岐に来る時点で必ず計算済み (skip 判定で同じキーを使う).
+                        assert dedup_key_value is not None
+                        self.seen_store.add(dedup_key_value)
                 except Exception as exc:
                     logger.warning("sink.write failed for item %s: %s", item.id, exc)
                     result.failures.append(FailureInfo(item=item, stage="write", error=exc))

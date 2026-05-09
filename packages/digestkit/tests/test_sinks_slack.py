@@ -127,6 +127,7 @@ def test_slack_sink_raises_on_5xx_error() -> None:
 
 def test_slack_sink_raises_on_network_error() -> None:
     """ネットワーク接続失敗で SinkError."""
+
     # Arrange
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
@@ -155,8 +156,10 @@ def test_slack_sink_raises_configuration_error_for_http_url() -> None:
         SlackSink(webhook_url="http://hooks.slack.com/services/test")
 
 
-def test_slack_sink_raises_configuration_error_for_empty_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    """webhook_url="" かつ SLACK_WEBHOOK_URL 未設定 → Falsy フォールバック後に ConfigurationError."""
+def test_slack_sink_raises_configuration_error_for_empty_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """webhook_url="" かつ SLACK_WEBHOOK_URL 未設定 → ConfigurationError."""
     # Arrange
     monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
 

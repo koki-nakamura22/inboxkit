@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from digestkit.dedup import SQLiteSeenStore, default_seen_store_path
+from digestkit.dedup import SQLiteSeenStore
 from digestkit.digester import Digester
 from digestkit.types import Digest, Item
 

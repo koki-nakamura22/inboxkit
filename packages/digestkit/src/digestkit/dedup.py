@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -34,15 +34,12 @@ class SQLiteSeenStore:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self._db_path)
         self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS seen_items "
-            "(item_id TEXT PRIMARY KEY, added_at TEXT)"
+            "CREATE TABLE IF NOT EXISTS seen_items (item_id TEXT PRIMARY KEY, added_at TEXT)"
         )
         self._conn.commit()
 
     def has(self, item_id: str) -> bool:
-        cur = self._conn.execute(
-            "SELECT 1 FROM seen_items WHERE item_id = ?", (item_id,)
-        )
+        cur = self._conn.execute("SELECT 1 FROM seen_items WHERE item_id = ?", (item_id,))
         return cur.fetchone() is not None
 
     def add(self, item_id: str) -> None:
@@ -50,7 +47,7 @@ class SQLiteSeenStore:
             with self._conn:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO seen_items VALUES (?, ?)",
-                    (item_id, datetime.now(timezone.utc).isoformat()),
+                    (item_id, datetime.now(UTC).isoformat()),
                 )
         except sqlite3.Error as e:
             raise DedupStoreError(str(e)) from e

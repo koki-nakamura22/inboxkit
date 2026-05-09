@@ -152,19 +152,20 @@ def test_composite_sink_aggregates_multiple_failures() -> None:
 
 
 def test_composite_sink_no_error_when_all_succeed() -> None:
-    """全 Sink が成功したとき例外は送出されない."""
+    """全 Sink が成功したとき例外は送出されず、全 Sink が呼ばれる."""
     # Arrange
     digest = _make_digest()
     item = _make_item()
-    composite = CompositeSink(
-        [
-            _RecordingSink("A"),
-            _RecordingSink("B"),
-        ]
-    )
+    sink_a = _RecordingSink("A")
+    sink_b = _RecordingSink("B")
+    composite = CompositeSink([sink_a, sink_b])
 
-    # Act / Assert (例外なし)
+    # Act
     composite.write(digest, item)
+
+    # Assert
+    assert len(sink_a.calls) == 1
+    assert len(sink_b.calls) == 1
 
 
 def test_composite_sink_raises_configuration_error_for_empty_list() -> None:
@@ -175,28 +176,39 @@ def test_composite_sink_raises_configuration_error_for_empty_list() -> None:
 
 
 def test_composite_sink_add_extends_sink_list() -> None:
-    """CompositeSink.__add__ で新たな CompositeSink が返される."""
+    """CompositeSink.__add__ で新たな CompositeSink が返され、全 Sink が呼ばれる."""
     # Arrange
-    call_order: list[str] = []
     digest = _make_digest()
     item = _make_item()
-
-    class _NamedSink:
-        def __init__(self, name: str) -> None:
-            self._name = name
-
-        def write(self, digest: Digest, item: Item) -> None:
-            call_order.append(self._name)
-
-    base = CompositeSink([_NamedSink("A"), _NamedSink("B")])
-    extended = base + _NamedSink("C")
+    sink_a = _RecordingSink("A")
+    sink_b = _RecordingSink("B")
+    sink_c = _RecordingSink("C")
+    base = CompositeSink([sink_a, sink_b])
+    extended = base + sink_c
 
     # Act
     extended.write(digest, item)
 
     # Assert
-    assert call_order == ["A", "B", "C"]
     assert isinstance(extended, CompositeSink)
+    assert len(sink_a.calls) == 1
+    assert len(sink_b.calls) == 1
+    assert len(sink_c.calls) == 1
+
+
+def test_composite_sink_single_sink_calls_write() -> None:
+    """sinks が 1 件(最小有効サイズ)のとき write が呼ばれる."""
+    # Arrange
+    digest = _make_digest()
+    item = _make_item()
+    only_sink = _RecordingSink("only")
+    composite = CompositeSink([only_sink])
+
+    # Act
+    composite.write(digest, item)
+
+    # Assert
+    assert len(only_sink.calls) == 1
 
 
 def test_composite_sink_is_sink_error_subclass() -> None:

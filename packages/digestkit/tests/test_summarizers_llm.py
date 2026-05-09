@@ -193,6 +193,137 @@ def test_llm_summarizer_passes_timeout_to_litellm() -> None:
     assert mock_completion.call_args.kwargs["timeout"] == 5.0
 
 
+def test_prompts_and_user_prompt_template_are_mutually_exclusive() -> None:
+    """user_prompt_template と prompts の同時指定は ValueError を投げる."""
+    with pytest.raises(ValueError, match="同時に指定できません"):
+        LLMSummarizer(
+            provider=_PROVIDER,
+            model=_MODEL,
+            user_prompt_template="x: {text}",
+            prompts={"standard": "y: {text}"},
+        )
+
+
+def test_prompts_empty_mapping_rejected() -> None:
+    """空の prompts 指定は ValueError."""
+    with pytest.raises(ValueError, match="1 つ以上"):
+        LLMSummarizer(provider=_PROVIDER, model=_MODEL, prompts={})
+
+
+def test_prompts_default_length_must_exist_in_mapping() -> None:
+    """default_length が prompts に無いキーの場合は ValueError."""
+    with pytest.raises(ValueError, match="含まれていません"):
+        LLMSummarizer(
+            provider=_PROVIDER,
+            model=_MODEL,
+            prompts={"short": "s: {text}"},
+            default_length="standard",
+        )
+
+
+def test_prompts_uses_default_length_when_summarize_omits_length() -> None:
+    """summarize() で length 未指定なら default_length のテンプレートが選ばれる."""
+    summarizer = LLMSummarizer(
+        provider=_PROVIDER,
+        model=_MODEL,
+        prompts={
+            "short": "SHORT: {text}",
+            "standard": "STANDARD: {text}",
+            "detailed": "DETAILED: {text}",
+        },
+        default_length="detailed",
+    )
+    item = Item(id="i", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("hi", item)
+
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
+    assert user_msg["content"] == "DETAILED: hi"
+
+
+def test_prompts_runtime_length_overrides_default() -> None:
+    """summarize(length=...) は default_length より優先される."""
+    summarizer = LLMSummarizer(
+        provider=_PROVIDER,
+        model=_MODEL,
+        prompts={
+            "short": "SHORT: {text}",
+            "standard": "STANDARD: {text}",
+        },
+        default_length="standard",
+    )
+    item = Item(id="i", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("hi", item, length="short")
+
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
+    assert user_msg["content"] == "SHORT: hi"
+
+
+def test_prompts_unknown_length_at_runtime_raises() -> None:
+    """summarize(length=) が prompts に無いキーの場合は ValueError."""
+    summarizer = LLMSummarizer(
+        provider=_PROVIDER,
+        model=_MODEL,
+        prompts={"short": "s: {text}"},
+        default_length="short",
+    )
+    item = Item(id="i", payload=None)
+
+    with (
+        patch(_PATCH, return_value=_make_mock_response()),
+        pytest.raises(ValueError, match="含まれていません"),
+    ):
+        summarizer.summarize("hi", item, length="detailed")
+
+
+def test_user_prompt_template_mode_ignores_length_arg() -> None:
+    """旧 API (user_prompt_template) モードでは length 引数を黙って無視する."""
+    summarizer = LLMSummarizer(
+        provider=_PROVIDER,
+        model=_MODEL,
+        user_prompt_template="LEGACY: {text}",
+    )
+    item = Item(id="i", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("hi", item, length="detailed")
+
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
+    assert user_msg["content"] == "LEGACY: hi"
+
+
+def test_default_prompts_class_var_has_three_levels() -> None:
+    """ビルトイン DEFAULT_PROMPTS は短/中/詳の 3 段階を提供する."""
+    assert set(LLMSummarizer.DEFAULT_PROMPTS.keys()) == {"short", "standard", "detailed"}
+    for tmpl in LLMSummarizer.DEFAULT_PROMPTS.values():
+        assert "{text}" in tmpl
+
+
+def test_default_prompts_can_be_used_by_reference() -> None:
+    """``prompts=LLMSummarizer.DEFAULT_PROMPTS`` の opt-in 経路が動作する."""
+    summarizer = LLMSummarizer(
+        provider=_PROVIDER,
+        model=_MODEL,
+        prompts=LLMSummarizer.DEFAULT_PROMPTS,
+    )
+    item = Item(id="i", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("hello", item, length="short")
+
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
+    # short プロンプトのプレフィックスが含まれ、{text} 部分に "hello" が入る
+    assert "3 行以内" in user_msg["content"]
+    assert "hello" in user_msg["content"]
+
+
 def test_llm_summarizer_uses_model_as_full_model_when_slash_present() -> None:
     """model に '/' が含まれる場合、provider を付加せずそのまま litellm へ渡す."""
     # Arrange

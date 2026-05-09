@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import final
+from typing import Any, final
 
 from digestkit.dedup import SeenStore, SQLiteSeenStore, default_seen_store_path
 from digestkit.protocols import Extractor, Sink, Source, Summarizer
@@ -61,7 +61,25 @@ class Digester:
             self.seen_store = SQLiteSeenStore(default_seen_store_path(type(self).__name__))
         # else: subclass defined seen_store as class attribute; leave it as-is
 
-    def run(self, limit: int | None = None, dry_run: bool = False) -> RunResult:
+    def run(
+        self,
+        limit: int | None = None,
+        dry_run: bool = False,
+        *,
+        length: str | None = None,
+    ) -> RunResult:
+        """パイプラインを実行する.
+
+        Args:
+            limit: 処理件数の上限.
+            dry_run: True なら sink への書き込みと SeenStore 更新をスキップ.
+            length: 段階別要約に対応する Summarizer
+                (例: :class:`digestkit.summarizers.LLMSummarizer` で
+                ``prompts`` を指定したもの) に渡す要約長キー.
+                None なら summarizer に length 引数を渡さず呼び出すため、
+                Summarizer Protocol だけを満たすカスタム実装でも従来どおり
+                動作する.
+        """
         result = RunResult()
         items = self.source.fetch()
         processed = 0
@@ -84,7 +102,16 @@ class Digester:
                 continue
 
             try:
-                digest = self.summarizer.summarize(text, item)
+                # length が None の時は kw を渡さず呼び出し、
+                # Summarizer Protocol を満たすだけのカスタム実装も壊さない.
+                if length is None:
+                    digest = self.summarizer.summarize(text, item)
+                else:
+                    # length kw は LLMSummarizer 等の拡張実装のみが受ける
+                    # (Protocol には含まれない). ここは型システムが知らない
+                    # ダックタイピング呼び出しなので Any 経由で逃がす.
+                    summarizer_with_length: Any = self.summarizer
+                    digest = summarizer_with_length.summarize(text, item, length=length)
             except Exception as exc:
                 logger.warning("summarize failed for item %s: %s", item.id, exc)
                 result.failures.append(FailureInfo(item=item, stage="summarize", error=exc))

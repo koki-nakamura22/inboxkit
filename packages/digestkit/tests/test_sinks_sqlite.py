@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -56,8 +57,10 @@ def test_sqlite_sink_writes_single_row_with_metadata(tmp_path: Path) -> None:
     assert row["summary"] == "hello world"
     assert row["tokens_in"] == 42
     assert row["latency_ms"] == 300
+    assert row["tokens_out"] == 50
     assert row["model"] == "claude-3"
-    assert row["created_at"] is not None
+    ts = datetime.fromisoformat(row["created_at"])
+    assert ts.tzinfo is not None  # D-105: UTC offset が付いていること
 
 
 def test_sqlite_sink_simple_insert_for_duplicate_item_id(tmp_path: Path) -> None:

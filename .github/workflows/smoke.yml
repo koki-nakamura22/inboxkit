@@ -1,0 +1,88 @@
+name: Smoke (extras matrix)
+
+# digestkit の optional extras を**個別に**インストールした環境で、
+# `from digestkit ...` import が壊れていないかを確認する。
+# 目的: `digestkit.sources` / `digestkit.sinks` 等の `__init__.py` に再び
+# eager import を書いてしまう退行 (Issue #2 と同型) を CI で検出する。
+#
+# 検証戦略:
+#   - workspace 全 extras が入った dev 環境ではなく、wheel を**素の venv**に
+#     `pip install` し、指定の extra だけを入れる。
+#   - dev dependencies (notion-client / httpx 等が dev で常駐) が混入しないよう、
+#     uv workspace は使わない。`pip install ./packages/digestkit[<extra>]` で
+#     PyPI 公開時と同じ依存解決を再現する。
+#   - python-version は 1 つに固定 (test job 側で matrix を持っているため、
+#     ここで直積にすると job 数が爆発する)。
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: bare
+            extras: ""
+            check: |
+              from digestkit import Digester  # noqa: F401
+          - name: pdf
+            extras: "[pdf]"
+            check: |
+              from digestkit.extractors import PDFExtractor  # noqa: F401
+              from digestkit.sources import LocalDirectorySource  # noqa: F401
+          - name: web
+            extras: "[web]"
+            check: |
+              from digestkit.extractors import PDFExtractor  # noqa: F401
+          - name: notion
+            extras: "[notion]"
+            check: |
+              from digestkit.sources import NotionDatabaseSource  # noqa: F401
+          - name: slack
+            extras: "[slack]"
+            check: |
+              from digestkit.sinks import SlackSink  # noqa: F401
+          - name: email
+            extras: "[email]"
+            check: |
+              from digestkit.sinks import EmailSink  # noqa: F401
+          - name: all
+            extras: "[all]"
+            check: |
+              from digestkit import Digester  # noqa: F401
+              from digestkit.extractors import PDFExtractor  # noqa: F401
+              from digestkit.sources import LocalDirectorySource, NotionDatabaseSource  # noqa: F401
+              from digestkit.sinks import (  # noqa: F401
+                  CompositeSink,
+                  EmailSink,
+                  SQLiteSink,
+                  SlackSink,
+              )
+    name: smoke-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Create isolated venv and install digestkit${{ matrix.extras }}
+        run: |
+          python -m venv .smoke-venv
+          . .smoke-venv/bin/activate
+          python -m pip install --upgrade pip
+          # `./packages/digestkit` をローカル sdist/build 経由で入れる。
+          # uv workspace は経由しない (dev extras を引かないため)。
+          pip install "./packages/digestkit${{ matrix.extras }}"
+      - name: Verify import surface
+        run: |
+          . .smoke-venv/bin/activate
+          # 想定 extra のみ入っていることを示すため freeze をログに残す。
+          pip freeze
+          python - <<'PY'
+          ${{ matrix.check }}
+          print("ok")
+          PY

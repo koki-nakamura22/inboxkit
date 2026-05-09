@@ -6,12 +6,27 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Iterable
+from pathlib import Path
 
 import pytest
 
 from digestkit.digester import ConfigurationError, Digester
 from digestkit.types import Digest, DigestkitError, Item
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clean_digestkit_cache() -> object:
+    yield
+    cache_dir = Path.home() / ".cache" / "digestkit"
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -95,7 +110,7 @@ def _make_digester(
         summarizer = _sum  # type: ignore[assignment]
         sink = _snk  # type: ignore[assignment]
 
-    d = _ConcreteDigester()
+    d = _ConcreteDigester(seen_store=None)
     return d, _ext, _sum, _snk
 
 

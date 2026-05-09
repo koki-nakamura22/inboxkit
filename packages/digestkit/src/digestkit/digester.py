@@ -70,7 +70,7 @@ class Digester:
             if limit is not None and processed >= limit:
                 break
 
-            if self.seen_store is not None and self.seen_store.has(item.id):
+            if not dry_run and self.seen_store is not None and self.seen_store.has(item.id):
                 result.skipped += 1
                 processed += 1
                 continue

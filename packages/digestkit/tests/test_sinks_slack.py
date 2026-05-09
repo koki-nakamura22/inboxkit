@@ -41,13 +41,6 @@ def _make_sink(**kwargs: object) -> SlackSink:
     return SlackSink(**defaults)  # type: ignore[arg-type]
 
 
-def _ok_transport() -> httpx.MockTransport:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text="ok")
-
-    return httpx.MockTransport(handler)
-
-
 def _capture_transport() -> tuple[httpx.MockTransport, list[httpx.Request]]:
     captured: list[httpx.Request] = []
 
@@ -160,6 +153,16 @@ def test_slack_sink_raises_configuration_error_for_http_url() -> None:
     # Act / Assert
     with pytest.raises(ConfigurationError):
         SlackSink(webhook_url="http://hooks.slack.com/services/test")
+
+
+def test_slack_sink_raises_configuration_error_for_empty_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """webhook_url="" かつ SLACK_WEBHOOK_URL 未設定 → Falsy フォールバック後に ConfigurationError."""
+    # Arrange
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+
+    # Act / Assert
+    with pytest.raises(ConfigurationError):
+        SlackSink(webhook_url="")
 
 
 def test_slack_sink_uses_env_var_when_no_url(monkeypatch: pytest.MonkeyPatch) -> None:

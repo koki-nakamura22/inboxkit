@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, final
+from typing import Any, Literal, final
 
 from digestkit.dedup import SeenStore, SQLiteSeenStore, default_seen_store_path
 from digestkit.protocols import Extractor, Sink, Source, Summarizer
@@ -25,10 +25,13 @@ class ConfigurationError(DigestkitError):
     """Digester サブクラスの設定不備 (必須属性欠落 等)."""
 
 
+FailureStage = Literal["extract", "summarize", "write"]
+
+
 @dataclass(frozen=True)
 class FailureInfo:
     item: Item
-    stage: str  # "extract" | "summarize" | "write"
+    stage: FailureStage
     error: BaseException
 
 

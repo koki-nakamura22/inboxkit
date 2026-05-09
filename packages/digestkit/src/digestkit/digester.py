@@ -58,9 +58,7 @@ class Digester:
         if not isinstance(seen_store, _SeenStoreSentinel):
             self.seen_store: SeenStore | None = seen_store
         elif not hasattr(self, "seen_store"):
-            self.seen_store = SQLiteSeenStore(
-                default_seen_store_path(type(self).__name__)
-            )
+            self.seen_store = SQLiteSeenStore(default_seen_store_path(type(self).__name__))
         # else: subclass defined seen_store as class attribute; leave it as-is
 
     def run(self, limit: int | None = None, dry_run: bool = False) -> RunResult:
@@ -103,9 +101,7 @@ class Digester:
                         self.seen_store.add(item.id)
                 except Exception as exc:
                     logger.warning("sink.write failed for item %s: %s", item.id, exc)
-                    result.failures.append(
-                        FailureInfo(item=item, stage="write", error=exc)
-                    )
+                    result.failures.append(FailureInfo(item=item, stage="write", error=exc))
 
             processed += 1
 

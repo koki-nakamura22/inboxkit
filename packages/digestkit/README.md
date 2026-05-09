@@ -74,6 +74,31 @@ if __name__ == "__main__":
     PdfDigester().run()
 ```
 
+## Long documents (chunked / map-reduce)
+
+For documents that exceed a model's context window (long PDFs, book chapters), use
+`ChunkedLLMSummarizer`. It splits the input, summarizes each chunk (map), and
+recursively merges the partial summaries (reduce). Inputs that fit in the window
+fall back to a single LLM call automatically.
+
+```python
+from digestkit.summarizers import ChunkedLLMSummarizer
+
+summarizer = ChunkedLLMSummarizer(
+    provider="anthropic",
+    model="claude-haiku-4-5",
+    chunk_size=80_000,    # tokens per chunk; defaults to model max - reserve_tokens
+    chunk_overlap=0,
+    prompts=ChunkedLLMSummarizer.DEFAULT_PROMPTS,  # opt-in length control
+    default_length="standard",
+)
+```
+
+`length` (`"short"` / `"standard"` / `"detailed"`) is applied **only at the final
+reduce step**; intermediate stages use a neutral merge prompt to avoid
+over-compressing mid-pipeline. On a per-chunk LLM failure the call fails fast with
+the chunk index in the error message.
+
 ## Configuration
 
 Set your LLM provider API key in a `.env` file (loaded automatically via `python-dotenv`):

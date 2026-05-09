@@ -80,7 +80,9 @@ def test_cli_run_returns_three_when_module_file_not_found(
     assert "not found" in captured.err
 
 
-def test_cli_run_returns_three_when_no_digester_subclass_found(tmp_path: Path) -> None:
+def test_cli_run_returns_three_when_no_digester_subclass_found(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """AC-011b: Digester サブクラスゼロ個 → 終了コード 3."""
     # Arrange
     module_file = tmp_path / "no_digester.py"
@@ -88,12 +90,16 @@ def test_cli_run_returns_three_when_no_digester_subclass_found(tmp_path: Path) -
 
     # Act
     exit_code = main(["run", str(module_file)])
+    captured = capsys.readouterr()
 
     # Assert
     assert exit_code == 3
+    assert "no Digester subclass found" in captured.err
 
 
-def test_cli_run_returns_three_when_multiple_digester_subclasses_found(tmp_path: Path) -> None:
+def test_cli_run_returns_three_when_multiple_digester_subclasses_found(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """AC-011c: Digester サブクラス 2 個以上 → 終了コード 3 (絞れない)."""
     # Arrange
     module_file = tmp_path / "multi_digester.py"
@@ -140,12 +146,16 @@ class DigestB(Digester):
 
     # Act
     exit_code = main(["run", str(module_file)])
+    captured = capsys.readouterr()
 
     # Assert
     assert exit_code == 3
+    assert "multiple Digester subclasses found" in captured.err
 
 
-def test_cli_run_returns_one_on_partial_failure(tmp_path: Path) -> None:
+def test_cli_run_returns_one_on_partial_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """AC-011d: 1 件失敗で他成功 → 終了コード 1 (部分失敗)."""
     # Arrange — 2 items; extractor fails on item "1" only
     module_file = tmp_path / "partial_fail.py"
@@ -186,9 +196,12 @@ class MyDigester(Digester):
 
     # Act
     exit_code = main(["run", str(module_file)])
+    captured = capsys.readouterr()
 
     # Assert
     assert exit_code == 1
+    assert "success=1" in captured.out
+    assert "failures=1" in captured.out
 
 
 def test_cli_run_returns_two_on_total_failure(tmp_path: Path) -> None:
@@ -268,3 +281,20 @@ def test_cli_run_returns_three_on_syntax_error(
     # Assert
     assert exit_code == 3
     assert "SyntaxError" in captured.err
+
+
+def test_cli_run_limit_restricts_processed_items(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--limit 1 で source が 2 件返しても 1 件のみ処理し exit code 0."""
+    # Arrange
+    module_file = tmp_path / "limited.py"
+    module_file.write_text(_VALID_DIGESTER_MODULE)
+
+    # Act
+    exit_code = main(["run", str(module_file), "--limit", "1"])
+    captured = capsys.readouterr()
+
+    # Assert
+    assert exit_code == 0
+    assert "success=1" in captured.out

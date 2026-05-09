@@ -30,7 +30,7 @@ def test_local_directory_source_yields_matching_files(tmp_path: Path) -> None:
 
 
 def test_local_directory_source_excludes_non_matching_glob(tmp_path: Path) -> None:
-    """AC-004: c.txt は yield されない."""
+    """AC-004: c.txt は yield されない (a.pdf のみ 1 件取得される)."""
     # Arrange
     (tmp_path / "a.pdf").write_text("a")
     (tmp_path / "c.txt").write_text("c")
@@ -40,8 +40,8 @@ def test_local_directory_source_excludes_non_matching_glob(tmp_path: Path) -> No
     items = list(source.fetch())
 
     # Assert
-    yielded_names = {Path(item.payload).name for item in items}
-    assert "c.txt" not in yielded_names
+    assert len(items) == 1
+    assert {Path(item.payload).name for item in items} == {"a.pdf"}
 
 
 def test_local_directory_source_returns_empty_for_empty_directory(tmp_path: Path) -> None:
@@ -79,12 +79,12 @@ def test_local_directory_source_item_id_is_unique_per_path(tmp_path: Path) -> No
     # Act
     items = list(source.fetch())
 
-    # Assert — ID が絶対パス文字列であり重複がない
-    ids = [item.id for item in items]
-    assert len(ids) == len(set(ids)), "Item.id は一意でなければならない"
-    for item in items:
-        expected_id = str(Path(item.payload).resolve())
-        assert item.id == expected_id
+    # Assert — ID が絶対パス文字列と一致し、重複がない
+    expected_ids = {
+        str((tmp_path / "a.pdf").resolve()),
+        str((tmp_path / "b.pdf").resolve()),
+    }
+    assert {item.id for item in items} == expected_ids
 
 
 def test_local_directory_source_returns_empty_for_nonexistent_directory() -> None:
@@ -150,6 +150,7 @@ def test_local_directory_source_skips_subdirectories(tmp_path: Path) -> None:
     # Act
     items = list(source.fetch())
 
-    # Assert
-    for item in items:
-        assert Path(item.payload).is_file(), "ディレクトリが payload に含まれている"
+    # Assert — ファイル 1 件のみ取得され、サブディレクトリは含まれない
+    assert len(items) == 1
+    assert Path(items[0].payload).is_file()
+    assert Path(items[0].payload).name == "a.txt"

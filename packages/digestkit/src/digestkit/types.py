@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Any
 
 
+class DigestkitError(Exception):
+    """digestkit 固有例外の base."""
+
+
 @dataclass(frozen=True)
 class Item:
     id: str

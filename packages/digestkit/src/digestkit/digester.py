@@ -4,15 +4,11 @@ import logging
 from dataclasses import dataclass, field
 
 from digestkit.protocols import Extractor, Sink, Source, Summarizer
-from digestkit.types import Item
+from digestkit.types import DigestkitError, Item
 
 logger = logging.getLogger(__name__)
 
 _REQUIRED_ATTRS = ("source", "extractor", "summarizer", "sink")
-
-
-class DigestkitError(Exception):
-    """digestkit 固有例外の base."""
 
 
 class ConfigurationError(DigestkitError):

@@ -10,8 +10,8 @@ from collections.abc import Iterable
 
 import pytest
 
-from digestkit.digester import ConfigurationError, Digester, DigestkitError
-from digestkit.types import Digest, Item
+from digestkit.digester import ConfigurationError, Digester
+from digestkit.types import Digest, DigestkitError, Item
 
 # ---------------------------------------------------------------------------
 # Test doubles

@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from digestkit.protocols import Extractor, Sink, Source, Summarizer
 from digestkit.types import Digest, Item

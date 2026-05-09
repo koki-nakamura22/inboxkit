@@ -7,19 +7,108 @@ Fixtures: tests/fixtures/notion/database_query_page1.json + page2.json
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
+
+from digestkit.digester import ConfigurationError
+from digestkit.sources.notion_database import NotionDatabaseSource
+from digestkit.types import Item
+
+_FIXTURES = Path(__file__).parent.parent / "fixtures" / "notion"
+
+
+def _load(name: str) -> dict[str, object]:
+    return json.loads((_FIXTURES / name).read_text())  # type: ignore[no-any-return]
 
 
 def test_notion_database_source_fetches_first_page() -> None:
     """AC-008: 1 ページ目のレスポンスから Item を yield."""
-    pytest.fail("not yet implemented")
+    # Arrange
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    mock_client.request.return_value = single_page
+
+    # Act
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="test-token")
+        items = list(source.fetch())
+
+    # Assert
+    assert len(items) == 2
+    assert items[0].id == "00000000-0000-0000-0000-000000000001"
+    assert items[1].id == "00000000-0000-0000-0000-000000000002"
+    assert isinstance(items[0], Item)
+    assert isinstance(items[0].payload, dict)
 
 
 def test_notion_database_source_follows_next_cursor_for_pagination() -> None:
-    """AC-008 境界値: next_cursor を追跡して 2 ページ目も取得。150 件全て yield."""
-    pytest.fail("not yet implemented")
+    """AC-008 ページネーション: next_cursor を追跡して 2 ページ目も取得、合計 3 件 yield."""
+    # Arrange
+    page1 = _load("database_query_page1.json")
+    page2 = _load("database_query_page2.json")
+    mock_client = MagicMock()
+    mock_client.request.side_effect = [page1, page2]
+
+    # Act
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="test-token")
+        items = list(source.fetch())
+
+    # Assert
+    assert len(items) == 3
+    assert items[0].id == "00000000-0000-0000-0000-000000000001"
+    assert items[2].id == "00000000-0000-0000-0000-000000000003"
+    second_call_kwargs = mock_client.request.call_args_list[1].kwargs
+    assert second_call_kwargs["body"]["start_cursor"] == "cursor-page-2"
 
 
 def test_notion_database_source_stops_when_next_cursor_is_null() -> None:
-    """AC-008: next_cursor=null でページネーション終了."""
-    pytest.fail("not yet implemented")
+    """AC-008: next_cursor=null でページネーション終了 (クエリは 2 回で停止)."""
+    # Arrange
+    page1 = _load("database_query_page1.json")
+    page2 = _load("database_query_page2.json")
+    mock_client = MagicMock()
+    mock_client.request.side_effect = [page1, page2]
+
+    # Act
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="test-token")
+        items = list(source.fetch())
+
+    # Assert — next_cursor=null の page2 で停止し 3 回目は呼ばれない
+    assert mock_client.request.call_count == 2
+    assert len(items) == 3
+
+
+def test_notion_database_source_raises_configuration_error_without_token() -> None:
+    """D-101: token も NOTION_TOKEN 環境変数も無い場合は ConfigurationError。"""
+    # Arrange — すべての環境変数をクリアして NOTION_TOKEN が存在しない状態にする
+    with patch.dict(os.environ, {}, clear=True):
+        # Act / Assert
+        with pytest.raises(ConfigurationError):
+            NotionDatabaseSource(database_id="db-id")
+
+
+def test_notion_database_source_uses_env_token() -> None:
+    """D-006: token=None の場合は NOTION_TOKEN 環境変数から取得して Client を初期化。"""
+    # Arrange
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    mock_client.request.return_value = single_page
+
+    # Act
+    with patch.dict(os.environ, {"NOTION_TOKEN": "env-token"}):
+        with patch(
+            "digestkit.sources.notion_database.Client", return_value=mock_client
+        ) as mock_cls:
+            source = NotionDatabaseSource(database_id="db-id")
+            list(source.fetch())
+
+    # Assert — 環境変数の token で Client が初期化された
+    mock_cls.assert_called_once_with(auth="env-token")

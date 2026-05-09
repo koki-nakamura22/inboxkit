@@ -476,3 +476,100 @@ def test_run_length_is_passed_to_length_aware_summarizer() -> None:
     d.run(length="detailed")
 
     assert [c[2] for c in _sum.calls] == ["detailed", "detailed"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #13: コンストラクタ injection (kwarg で source/extractor/summarizer/sink を渡す)
+# ---------------------------------------------------------------------------
+
+
+def test_digester_ctor_kwargs_constructs_without_subclass() -> None:
+    """Issue #13: サブクラスを書かずに kwarg だけで Digester を組み立てられる."""
+    items = _make_items(3)
+    src = _StubSource(items)
+    ext = _SpyExtractor()
+    summ = _SpySummarizer()
+    snk = _SpySink()
+
+    d = Digester(
+        source=src,
+        extractor=ext,
+        summarizer=summ,
+        sink=snk,
+        seen_store=None,
+    )
+    result = d.run()
+
+    assert result.success == 3
+    assert len(snk.calls) == 3
+    # kwarg がそのままインスタンス属性として参照可能
+    assert d.source is src
+    assert d.extractor is ext
+    assert d.summarizer is summ
+    assert d.sink is snk
+
+
+def test_digester_ctor_kwargs_override_subclass_attrs() -> None:
+    """Issue #13: kwarg はサブクラスの class 属性を override する (kwarg 優先)."""
+    items_a = _make_items(2)
+    items_b = _make_items(5)
+    ext_a = _SpyExtractor()
+    ext_b = _SpyExtractor()
+    summ = _SpySummarizer()
+    snk = _SpySink()
+
+    class _SubDigester(Digester):
+        source = _StubSource(items_a)
+        extractor = ext_a  # type: ignore[assignment]
+        summarizer = summ  # type: ignore[assignment]
+        sink = snk  # type: ignore[assignment]
+
+    # source / extractor を kwarg で差し替え
+    override_source = _StubSource(items_b)
+    d = _SubDigester(
+        source=override_source,
+        extractor=ext_b,
+        seen_store=None,
+    )
+    result = d.run()
+
+    # 5 件処理 (override 側) されたこと、override されない属性は class 属性のまま
+    assert result.success == 5
+    assert d.source is override_source
+    assert d.extractor is ext_b
+    assert d.summarizer is summ
+    assert d.sink is snk
+    # override された extractor が呼ばれ、class 属性側は呼ばれない
+    assert len(ext_b.calls) == 5
+    assert ext_a.calls == []
+
+
+def test_digester_ctor_kwargs_partial_with_subclass_fallback() -> None:
+    """Issue #13: 一部 kwarg のみ指定し、残りは class 属性にフォールバックできる."""
+    items = _make_items(2)
+    ext = _SpyExtractor()
+    summ_class = _SpySummarizer()
+    snk = _SpySink()
+
+    class _PartialDigester(Digester):
+        source = _StubSource(items)
+        summarizer = summ_class  # type: ignore[assignment]
+        sink = snk  # type: ignore[assignment]
+        # extractor は class 属性として持たない → kwarg で渡す
+
+    d = _PartialDigester(extractor=ext, seen_store=None)
+    result = d.run()
+
+    assert result.success == 2
+    assert d.extractor is ext
+    assert d.summarizer is summ_class
+
+
+def test_digester_ctor_kwargs_missing_required_raises() -> None:
+    """Issue #13: kwarg だけで作る時、必須依存が欠けていれば ConfigurationError."""
+    src = _StubSource(_make_items(1))
+    ext = _SpyExtractor()
+    summ = _SpySummarizer()
+    # sink を渡し忘れたケース
+    with pytest.raises(ConfigurationError, match="sink"):
+        Digester(source=src, extractor=ext, summarizer=summ, seen_store=None)

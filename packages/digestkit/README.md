@@ -74,6 +74,25 @@ if __name__ == "__main__":
     PdfDigester().run()
 ```
 
+### Programmatic construction (constructor injection)
+
+For dynamic configuration (config files, CLI flags, tests with swapped components),
+pass the four core dependencies as constructor kwargs instead of subclassing:
+
+```python
+digester = Digester(
+    source=LocalDirectorySource("./papers", glob="*.pdf"),
+    extractor=PDFExtractor(),
+    summarizer=LLMSummarizer(provider="anthropic", model="claude-haiku-4-5"),
+    sink=SQLiteSink("digests.db"),
+)
+digester.run()
+```
+
+Both styles are supported and can be mixed: when a subclass defines class attributes,
+any kwarg passed to `__init__` overrides them (kwarg wins). This is the same hybrid
+pattern used by `seen_store` and `dedup_key`.
+
 ## Long documents (chunked / map-reduce)
 
 For documents that exceed a model's context window (long PDFs, book chapters), use

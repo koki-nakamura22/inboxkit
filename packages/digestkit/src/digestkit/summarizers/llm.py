@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import litellm
 from dotenv import load_dotenv
@@ -39,13 +40,15 @@ class LLMSummarizer:
 
         start = time.perf_counter()
         try:
-            response = litellm.completion(model=full_model, messages=messages, timeout=self._timeout)
+            response: Any = litellm.completion(  # type: ignore[reportUnknownMemberType]
+                model=full_model, messages=messages, timeout=self._timeout
+            )
         except Exception as e:
             raise SummarizationError(str(e)) from e
         latency_ms = int((time.perf_counter() - start) * 1000)
 
-        summary = response.choices[0].message.content or ""
-        usage = response.usage
+        summary: str = response.choices[0].message.content or ""
+        usage: Any = response.usage
         return Digest(
             summary=summary,
             tokens_in=getattr(usage, "prompt_tokens", 0),

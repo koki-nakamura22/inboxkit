@@ -23,6 +23,7 @@ _FIXTURE = json.loads(
 _PROVIDER = "openai"
 _MODEL = "gpt-4"
 _FULL_MODEL = f"{_PROVIDER}/{_MODEL}"
+_PATCH = "digestkit.summarizers.llm.litellm.completion"
 
 
 def _make_mock_response() -> MagicMock:
@@ -45,7 +46,7 @@ def test_llm_summarizer_calls_litellm_with_expanded_prompt() -> None:
     mock_response = _make_mock_response()
 
     # Act
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response) as mock_completion:
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("hello world", item)
 
     # Assert
@@ -65,7 +66,7 @@ def test_llm_summarizer_returns_digest_with_metadata() -> None:
     mock_response = _make_mock_response()
 
     # Act
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response):
+    with patch(_PATCH, return_value=mock_response):
         digest = summarizer.summarize("some text", item)
 
     # Assert
@@ -84,11 +85,10 @@ def test_llm_summarizer_handles_empty_text_input() -> None:
     mock_response = _make_mock_response()
 
     # Act / Assert — 例外が発生しないことを確認
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response) as mock_completion:
-        digest = summarizer.summarize("", item)
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("", item)
 
     mock_completion.assert_called_once()
-    assert isinstance(digest.summary, str)
 
 
 def test_llm_summarizer_passes_large_text_without_truncation() -> None:
@@ -100,7 +100,7 @@ def test_llm_summarizer_passes_large_text_without_truncation() -> None:
     mock_response = _make_mock_response()
 
     # Act
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response) as mock_completion:
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize(large_text, item)
 
     # Assert — litellm.completion に渡った user メッセージが切り詰められていない
@@ -117,7 +117,7 @@ def test_llm_summarizer_raises_summarization_error_on_litellm_failure() -> None:
 
     # Act / Assert
     with (
-        patch("digestkit.summarizers.llm.litellm.completion", side_effect=RuntimeError("API error")),
+        patch(_PATCH, side_effect=RuntimeError("API error")),
         pytest.raises(SummarizationError, match="API error"),
     ):
         summarizer.summarize("some text", item)
@@ -135,7 +135,7 @@ def test_llm_summarizer_includes_system_prompt_when_set() -> None:
     mock_response = _make_mock_response()
 
     # Act
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response) as mock_completion:
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("text", item)
 
     # Assert
@@ -152,12 +152,45 @@ def test_llm_summarizer_omits_system_message_when_empty() -> None:
     mock_response = _make_mock_response()
 
     # Act
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response) as mock_completion:
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("text", item)
 
     # Assert
     messages = mock_completion.call_args.kwargs["messages"]
     assert all(m["role"] != "system" for m in messages)
+
+
+def test_llm_summarizer_falls_back_to_empty_string_when_content_is_none() -> None:
+    """litellm が content=None を返した場合、Digest.summary は空文字列になる."""
+    # Arrange
+    summarizer = LLMSummarizer(provider=_PROVIDER, model=_MODEL)
+    item = Item(id="item-1", payload=None)
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = None
+    mock_response.usage.prompt_tokens = 10
+    mock_response.usage.completion_tokens = 0
+
+    # Act
+    with patch(_PATCH, return_value=mock_response):
+        digest = summarizer.summarize("text", item)
+
+    # Assert
+    assert digest.summary == ""
+
+
+def test_llm_summarizer_passes_timeout_to_litellm() -> None:
+    """timeout パラメータが litellm.completion へそのまま渡される."""
+    # Arrange
+    summarizer = LLMSummarizer(provider=_PROVIDER, model=_MODEL, timeout=5.0)
+    item = Item(id="item-1", payload=None)
+    mock_response = _make_mock_response()
+
+    # Act
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("text", item)
+
+    # Assert
+    assert mock_completion.call_args.kwargs["timeout"] == 5.0
 
 
 def test_llm_summarizer_uses_model_as_full_model_when_slash_present() -> None:
@@ -168,7 +201,7 @@ def test_llm_summarizer_uses_model_as_full_model_when_slash_present() -> None:
     mock_response = _make_mock_response()
 
     # Act
-    with patch("digestkit.summarizers.llm.litellm.completion", return_value=mock_response) as mock_completion:
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("text", item)
 
     # Assert — provider を重複付加しない

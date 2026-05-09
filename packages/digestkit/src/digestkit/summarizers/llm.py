@@ -85,8 +85,7 @@ class LLMSummarizer:
         self._system_prompt = system_prompt
         # 旧 API 互換: どちらも未指定なら "{text}" 単発モード.
         self._user_prompt_template: str | None = (
-            user_prompt_template if user_prompt_template is not None or prompts is None
-            else None
+            user_prompt_template if user_prompt_template is not None or prompts is None else None
         )
         if user_prompt_template is None and prompts is None:
             self._user_prompt_template = "{text}"
@@ -114,9 +113,7 @@ class LLMSummarizer:
             )
         return self._prompts[chosen]
 
-    def summarize(
-        self, text: str, item: Item, *, length: str | None = None
-    ) -> Digest:
+    def summarize(self, text: str, item: Item, *, length: str | None = None) -> Digest:
         full_model = f"{self._provider}/{self._model}" if "/" not in self._model else self._model
         template = self._resolve_template(length)
         user_prompt = template.format(text=text, item=item)

@@ -239,9 +239,7 @@ def test_prompts_uses_default_length_when_summarize_omits_length() -> None:
     with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("hi", item)
 
-    user_msg = next(
-        m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user"
-    )
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
     assert user_msg["content"] == "DETAILED: hi"
 
 
@@ -262,9 +260,7 @@ def test_prompts_runtime_length_overrides_default() -> None:
     with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("hi", item, length="short")
 
-    user_msg = next(
-        m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user"
-    )
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
     assert user_msg["content"] == "SHORT: hi"
 
 
@@ -298,9 +294,7 @@ def test_user_prompt_template_mode_ignores_length_arg() -> None:
     with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("hi", item, length="detailed")
 
-    user_msg = next(
-        m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user"
-    )
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
     assert user_msg["content"] == "LEGACY: hi"
 
 
@@ -324,9 +318,7 @@ def test_default_prompts_can_be_used_by_reference() -> None:
     with patch(_PATCH, return_value=mock_response) as mock_completion:
         summarizer.summarize("hello", item, length="short")
 
-    user_msg = next(
-        m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user"
-    )
+    user_msg = next(m for m in mock_completion.call_args.kwargs["messages"] if m["role"] == "user")
     # short プロンプトのプレフィックスが含まれ、{text} 部分に "hello" が入る
     assert "3 行以内" in user_msg["content"]
     assert "hello" in user_msg["content"]

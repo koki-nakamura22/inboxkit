@@ -441,9 +441,7 @@ class _LengthAwareSummarizer:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Item, str | None]] = []
 
-    def summarize(
-        self, text: str, item: Item, *, length: str | None = None
-    ) -> Digest:
+    def summarize(self, text: str, item: Item, *, length: str | None = None) -> Digest:
         self.calls.append((text, item, length))
         return _stub_digest(item)
 

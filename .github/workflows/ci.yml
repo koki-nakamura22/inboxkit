@@ -11,7 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync
+      # workspace member (digestkit) + 全 extras (pdf/web/notion/slack/email) を
+      # インストールしないと、import や型解決が通らないため `--all-packages
+      # --all-extras` を付与。
+      - run: uv sync --all-packages --all-extras
       - run: uv run ruff check packages/
       - run: uv run ruff format --check packages/
 
@@ -20,7 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
-      - run: uv sync
+      # workspace member (digestkit) + 全 extras (pdf/web/notion/slack/email) を
+      # インストールしないと、import や型解決が通らないため `--all-packages
+      # --all-extras` を付与。
+      - run: uv sync --all-packages --all-extras
       - run: uv run pyright packages/
 
   test:
@@ -41,5 +47,8 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           python-version: ${{ matrix.python }}
-      - run: uv sync
+      # workspace member (digestkit) + 全 extras (pdf/web/notion/slack/email) を
+      # インストールしないと、import や型解決が通らないため `--all-packages
+      # --all-extras` を付与。
+      - run: uv sync --all-packages --all-extras
       - run: uv run pytest packages/digestkit/tests -m "not demonstration and not needs_network" --cov --cov-fail-under=80

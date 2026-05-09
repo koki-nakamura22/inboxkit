@@ -21,7 +21,7 @@ from digestkit.types import Digest, DigestkitError, Item
 
 
 @pytest.fixture(autouse=True)
-def _clean_digestkit_cache() -> Generator[None, None, None]:
+def _clean_digestkit_cache() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     yield
     cache_dir = Path.home() / ".cache" / "digestkit"
     if cache_dir.exists():

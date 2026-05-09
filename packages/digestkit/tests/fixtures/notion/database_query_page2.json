@@ -1,0 +1,19 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "page",
+      "id": "00000000-0000-0000-0000-000000000003",
+      "properties": {
+        "Title": {
+          "title": [{"plain_text": "Article 3 (page 2)"}]
+        },
+        "URL": {
+          "url": "https://example.com/article-3"
+        }
+      }
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}

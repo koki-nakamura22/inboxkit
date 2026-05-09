@@ -22,6 +22,7 @@ dev-dependencies = [
     "pytest-cov",
     "ruff",
     "pyright",
+    "pyyaml",  # GitHub Actions yaml validation 用 (T018 verification)
 ]
 
 # ============================

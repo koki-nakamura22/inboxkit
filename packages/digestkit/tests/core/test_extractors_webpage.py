@@ -18,6 +18,7 @@ from digestkit.extractors.webpage import WebPageExtractor
 from digestkit.types import Item
 
 _FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "web"
+_PATCH_TARGET = "digestkit.extractors.webpage.httpx.get"
 
 
 def _make_ok_response(html: str, content_type: str = "text/html; charset=utf-8") -> MagicMock:
@@ -45,7 +46,7 @@ def test_webpage_extractor_returns_article_body_only() -> None:
     item = Item(id="article", payload="https://example.com/article")
 
     # Act
-    with patch("httpx.get", return_value=_make_ok_response(html)):
+    with patch(_PATCH_TARGET, return_value=_make_ok_response(html)):
         extractor = WebPageExtractor()
         text = extractor.extract(item)
 
@@ -61,7 +62,7 @@ def test_webpage_extractor_raises_extraction_error_on_404() -> None:
     item = Item(id="missing", payload="https://example.com/missing")
 
     # Act / Assert
-    with patch("httpx.get", return_value=_make_error_response(404)):
+    with patch(_PATCH_TARGET, return_value=_make_error_response(404)):
         extractor = WebPageExtractor()
         with pytest.raises(ExtractionError):
             extractor.extract(item)
@@ -73,7 +74,39 @@ def test_webpage_extractor_raises_extraction_error_on_timeout() -> None:
     item = Item(id="slow", payload="https://example.com/slow")
 
     # Act / Assert
-    with patch("httpx.get", side_effect=httpx.TimeoutException("timed out")):
+    with patch(_PATCH_TARGET, side_effect=httpx.TimeoutException("timed out")):
+        extractor = WebPageExtractor()
+        with pytest.raises(ExtractionError):
+            extractor.extract(item)
+
+
+def test_webpage_extractor_raises_extraction_error_on_non_html_content_type() -> None:
+    """Content-Type が text/html でない場合に ExtractionError."""
+    # Arrange
+    item = Item(id="json", payload="https://example.com/api/data")
+
+    # Act / Assert
+    ok_response = _make_ok_response("{}", content_type="application/json")
+    with patch(_PATCH_TARGET, return_value=ok_response):
+        extractor = WebPageExtractor()
+        with pytest.raises(ExtractionError):
+            extractor.extract(item)
+
+
+def test_webpage_extractor_raises_extraction_error_when_trafilatura_returns_none() -> None:
+    """trafilatura.extract() が None を返した場合に ExtractionError."""
+    # Arrange
+    item = Item(id="empty", payload="https://example.com/empty")
+    # 本文抽出できない最小 HTML
+    bare_html = "<html><body></body></html>"
+
+    _trafilatura_patch = "digestkit.extractors.webpage.trafilatura.extract"
+
+    # Act / Assert
+    with (
+        patch(_PATCH_TARGET, return_value=_make_ok_response(bare_html)),
+        patch(_trafilatura_patch, return_value=None),
+    ):
         extractor = WebPageExtractor()
         with pytest.raises(ExtractionError):
             extractor.extract(item)

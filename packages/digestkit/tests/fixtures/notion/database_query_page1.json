@@ -1,0 +1,31 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "page",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "properties": {
+        "Title": {
+          "title": [{"plain_text": "Article 1 (page 1)"}]
+        },
+        "URL": {
+          "url": "https://example.com/article-1"
+        }
+      }
+    },
+    {
+      "object": "page",
+      "id": "00000000-0000-0000-0000-000000000002",
+      "properties": {
+        "Title": {
+          "title": [{"plain_text": "Article 2 (page 1)"}]
+        },
+        "URL": {
+          "url": "https://example.com/article-2"
+        }
+      }
+    }
+  ],
+  "next_cursor": "cursor-page-2",
+  "has_more": true
+}

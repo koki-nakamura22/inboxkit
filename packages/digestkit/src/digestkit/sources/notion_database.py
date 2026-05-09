@@ -15,9 +15,7 @@ class NotionDatabaseSource:
         self._database_id = database_id
         resolved = token or os.environ.get("NOTION_TOKEN")
         if not resolved:
-            raise ConfigurationError(
-                "NotionDatabaseSource requires token or NOTION_TOKEN env"
-            )
+            raise ConfigurationError("NotionDatabaseSource requires token or NOTION_TOKEN env")
         self._token: str = resolved
 
     def fetch(self) -> Iterable[Item]:

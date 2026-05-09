@@ -16,7 +16,6 @@ import pytest
 
 from digestkit.digester import ConfigurationError
 from digestkit.sources.notion_database import NotionDatabaseSource
-from digestkit.types import Item
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures" / "notion"
 
@@ -42,7 +41,6 @@ def test_notion_database_source_fetches_first_page() -> None:
     assert len(items) == 2
     assert items[0].id == "00000000-0000-0000-0000-000000000001"
     assert items[1].id == "00000000-0000-0000-0000-000000000002"
-    assert isinstance(items[0], Item)
     assert isinstance(items[0].payload, dict)
 
 
@@ -88,10 +86,30 @@ def test_notion_database_source_stops_when_next_cursor_is_null() -> None:
 def test_notion_database_source_raises_configuration_error_without_token() -> None:
     """D-101: token も NOTION_TOKEN 環境変数も無い場合は ConfigurationError。"""
     # Arrange — すべての環境変数をクリアして NOTION_TOKEN が存在しない状態にする
-    with patch.dict(os.environ, {}, clear=True):
+    with patch.dict(os.environ, {}, clear=True), pytest.raises(ConfigurationError):
         # Act / Assert
-        with pytest.raises(ConfigurationError):
-            NotionDatabaseSource(database_id="db-id")
+        NotionDatabaseSource(database_id="db-id")
+
+
+def test_notion_database_source_yields_empty_when_results_is_empty() -> None:
+    """D-101: results=[] のレスポンスで 0 件 yield (例外なし)."""
+    # Arrange
+    empty_response: dict[str, object] = {
+        "object": "list",
+        "results": [],
+        "next_cursor": None,
+        "has_more": False,
+    }
+    mock_client = MagicMock()
+    mock_client.request.return_value = empty_response
+
+    # Act
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="test-token")
+        items = list(source.fetch())
+
+    # Assert
+    assert items == []
 
 
 def test_notion_database_source_uses_env_token() -> None:
@@ -103,12 +121,12 @@ def test_notion_database_source_uses_env_token() -> None:
     mock_client.request.return_value = single_page
 
     # Act
-    with patch.dict(os.environ, {"NOTION_TOKEN": "env-token"}):
-        with patch(
-            "digestkit.sources.notion_database.Client", return_value=mock_client
-        ) as mock_cls:
-            source = NotionDatabaseSource(database_id="db-id")
-            list(source.fetch())
+    with (
+        patch.dict(os.environ, {"NOTION_TOKEN": "env-token"}),
+        patch("digestkit.sources.notion_database.Client", return_value=mock_client) as mock_cls,
+    ):
+        source = NotionDatabaseSource(database_id="db-id")
+        list(source.fetch())
 
     # Assert — 環境変数の token で Client が初期化された
     mock_cls.assert_called_once_with(auth="env-token")

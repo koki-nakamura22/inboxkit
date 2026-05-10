@@ -21,7 +21,7 @@ _MODEL = "gpt-4"
 _FULL_MODEL = f"{_PROVIDER}/{_MODEL}"
 _PATCH_COMPLETION = "digestkit.summarizers.chunked.litellm.completion"
 _PATCH_TOKEN_COUNTER = "digestkit.summarizers.chunked.litellm.token_counter"
-_PATCH_GET_MAX_TOKENS = "digestkit.summarizers.chunked.litellm.get_max_tokens"
+_PATCH_GET_MODEL_INFO = "digestkit.summarizers.chunked.litellm.get_model_info"
 
 
 def _mock_response(content: str = "OK", in_tokens: int = 10, out_tokens: int = 5) -> MagicMock:
@@ -244,31 +244,80 @@ def test_chunk_failure_raises_summarization_error_with_index() -> None:
 # ------------------------------------------------------------------ 設定派生
 
 
-def test_chunk_size_falls_back_to_get_max_tokens_minus_reserve() -> None:
-    """chunk_size 未指定なら litellm.get_max_tokens(model) - reserve_tokens を使う."""
+def test_chunk_size_falls_back_to_max_input_tokens_minus_reserve() -> None:
+    """chunk_size 未指定なら max_input_tokens (= 入力 context window) - reserve_tokens を使う.
+
+    Regression: #23. 以前は litellm.get_max_tokens (= 出力上限) を読んでいたため、
+    1M context window のモデルでも 57k tokens で chunked 経路に突入していた.
+    """
     summarizer = ChunkedLLMSummarizer(provider=_PROVIDER, model=_MODEL, reserve_tokens=1000)
     item = Item(id="i", payload=None)
 
-    # max_tokens=5000 → threshold=4000. 入力が 3999 トークンなら単発 fallback.
+    # max_input_tokens=5000 → threshold=4000. 入力が 3999 トークンなら単発 fallback.
+    # max_tokens=2000 (= 出力上限) を返しても、こちらは無視されるべき.
+    info = {"max_input_tokens": 5000, "max_tokens": 2000, "max_output_tokens": 2000}
     with (
         patch(_PATCH_COMPLETION, return_value=_mock_response("OUT")) as mock_completion,
         patch(_PATCH_TOKEN_COUNTER, return_value=3999),
-        patch(_PATCH_GET_MAX_TOKENS, return_value=5000),
+        patch(_PATCH_GET_MODEL_INFO, return_value=info),
     ):
         summarizer.summarize("text", item)
 
     mock_completion.assert_called_once()
 
 
+def test_chunk_size_falls_back_to_max_tokens_when_max_input_tokens_missing() -> None:
+    """max_input_tokens を公開していない古いバックエンドでは max_tokens にフォールバック."""
+    summarizer = ChunkedLLMSummarizer(provider=_PROVIDER, model=_MODEL, reserve_tokens=1000)
+    item = Item(id="i", payload=None)
+
+    # max_input_tokens が無い → max_tokens=5000 が採用され threshold=4000.
+    info: dict[str, Any] = {"max_tokens": 5000}
+    with (
+        patch(_PATCH_COMPLETION, return_value=_mock_response("OUT")) as mock_completion,
+        patch(_PATCH_TOKEN_COUNTER, return_value=3999),
+        patch(_PATCH_GET_MODEL_INFO, return_value=info),
+    ):
+        summarizer.summarize("text", item)
+
+    mock_completion.assert_called_once()
+
+
+def test_chunk_size_does_not_use_output_limit_for_context_window() -> None:
+    """gemini-2.5-flash 風: max_input_tokens=1M, max_tokens=65k のとき 1M を採用する.
+
+    Regression: #23. 修正前は max_tokens (= 65k) を採用してしまっていた.
+    """
+    summarizer = ChunkedLLMSummarizer(provider=_PROVIDER, model=_MODEL, reserve_tokens=8000)
+    item = Item(id="i", payload=None)
+
+    info = {
+        "max_input_tokens": 1_048_576,
+        "max_tokens": 65_535,
+        "max_output_tokens": 65_535,
+    }
+    # 185k tokens の入力. max_tokens (=65535) ベースだと chunked 経路、
+    # max_input_tokens (=1M) ベースなら単発 fallback (185k < 1M - 8000 = 1,040,576).
+    with (
+        patch(_PATCH_COMPLETION, return_value=_mock_response("OUT")) as mock_completion,
+        patch(_PATCH_TOKEN_COUNTER, return_value=185_000),
+        patch(_PATCH_GET_MODEL_INFO, return_value=info),
+    ):
+        summarizer.summarize("text", item)
+
+    # 単発呼び出しで完了することを保証 (= context window を取り違えていない).
+    mock_completion.assert_called_once()
+
+
 def test_unknown_model_max_tokens_uses_8000_default() -> None:
-    """get_max_tokens が例外でも fallback 8000 で動く."""
+    """get_model_info が例外でも fallback 8000 で動く."""
     summarizer = ChunkedLLMSummarizer(provider=_PROVIDER, model=_MODEL, reserve_tokens=0)
     item = Item(id="i", payload=None)
 
     with (
         patch(_PATCH_COMPLETION, return_value=_mock_response("OUT")) as mock_completion,
         patch(_PATCH_TOKEN_COUNTER, return_value=100),
-        patch(_PATCH_GET_MAX_TOKENS, side_effect=RuntimeError("unknown model")),
+        patch(_PATCH_GET_MODEL_INFO, side_effect=RuntimeError("unknown model")),
     ):
         summarizer.summarize("text", item)
 

@@ -193,6 +193,34 @@ def test_llm_summarizer_passes_timeout_to_litellm() -> None:
     assert mock_completion.call_args.kwargs["timeout"] == 5.0
 
 
+def test_llm_summarizer_default_num_retries_is_zero() -> None:
+    """デフォルトでは num_retries=0 が litellm へ渡る (旧挙動維持, Issue #24)."""
+    summarizer = LLMSummarizer(provider=_PROVIDER, model=_MODEL)
+    item = Item(id="item-1", payload=None)
+
+    with patch(_PATCH, return_value=_make_mock_response()) as mock_completion:
+        summarizer.summarize("text", item)
+
+    assert mock_completion.call_args.kwargs["num_retries"] == 0
+
+
+def test_llm_summarizer_passes_num_retries_to_litellm() -> None:
+    """num_retries パラメータが litellm.completion へそのまま渡される (Issue #24)."""
+    summarizer = LLMSummarizer(provider=_PROVIDER, model=_MODEL, num_retries=3)
+    item = Item(id="item-1", payload=None)
+
+    with patch(_PATCH, return_value=_make_mock_response()) as mock_completion:
+        summarizer.summarize("text", item)
+
+    assert mock_completion.call_args.kwargs["num_retries"] == 3
+
+
+def test_llm_summarizer_rejects_negative_num_retries() -> None:
+    """num_retries に負値を渡すと ValueError (Issue #24)."""
+    with pytest.raises(ValueError, match="num_retries"):
+        LLMSummarizer(provider=_PROVIDER, model=_MODEL, num_retries=-1)
+
+
 def test_prompts_and_user_prompt_template_are_mutually_exclusive() -> None:
     """user_prompt_template と prompts の同時指定は ValueError を投げる."""
     with pytest.raises(ValueError, match="同時に指定できません"):

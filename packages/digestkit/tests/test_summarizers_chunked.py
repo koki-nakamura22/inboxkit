@@ -386,3 +386,54 @@ def test_default_prompts_classvar_mirrors_llmsummarizer() -> None:
     from digestkit.summarizers.llm import LLMSummarizer
 
     assert ChunkedLLMSummarizer.DEFAULT_PROMPTS is LLMSummarizer.DEFAULT_PROMPTS
+
+
+# ----------------------------------------------------------------- num_retries (#24)
+
+
+def test_chunked_default_num_retries_is_zero() -> None:
+    """デフォルトでは num_retries=0 が litellm へ渡る (Issue #24)."""
+    summarizer = ChunkedLLMSummarizer(
+        provider=_PROVIDER, model=_MODEL, chunk_size=1000, reserve_tokens=0
+    )
+    item = Item(id="i", payload=None)
+
+    with (
+        patch(_PATCH_COMPLETION, return_value=_mock_response()) as mock_completion,
+        patch(_PATCH_TOKEN_COUNTER, return_value=10),
+    ):
+        summarizer.summarize("text", item)
+
+    assert mock_completion.call_args.kwargs["num_retries"] == 0
+
+
+def test_chunked_passes_num_retries_to_litellm_on_each_chunk() -> None:
+    """map / reduce 全 chunk 呼び出しで num_retries が litellm へ伝播する (Issue #24)."""
+    summarizer = ChunkedLLMSummarizer(
+        provider=_PROVIDER, model=_MODEL, chunk_size=100, reserve_tokens=0, num_retries=2
+    )
+    item = Item(id="i", payload=None)
+
+    text = ("para1 " * 40).strip() + "\n\n" + ("para2 " * 40).strip()
+
+    def fake_count(*, model: str, text: str) -> int:
+        # 2 段落でそれぞれ chunk_size 以下、結合すると超える形
+        return len(text) // 2
+
+    with (
+        patch(
+            _PATCH_COMPLETION, return_value=_mock_response("OUT", out_tokens=1)
+        ) as mock_completion,
+        patch(_PATCH_TOKEN_COUNTER, side_effect=fake_count),
+    ):
+        summarizer.summarize(text, item)
+
+    assert mock_completion.call_count >= 2
+    for call in mock_completion.call_args_list:
+        assert call.kwargs["num_retries"] == 2
+
+
+def test_chunked_rejects_negative_num_retries() -> None:
+    """num_retries に負値を渡すと ValueError (Issue #24)."""
+    with pytest.raises(ValueError, match="num_retries"):
+        ChunkedLLMSummarizer(provider=_PROVIDER, model=_MODEL, num_retries=-1)

@@ -242,18 +242,21 @@ class ChunkedLLMSummarizer:
     def _effective_chunk_size(self, full_model: str) -> int:
         if self._chunk_size is not None:
             return self._chunk_size
-        max_tokens = _safe_get_max_tokens(full_model)
-        if max_tokens is None:
+        # max_input_tokens (= 入力 context window) を取得. #23 修正前は
+        # litellm.get_max_tokens (= 出力上限) を誤用していたため過剰チャンク化していた.
+        context_window = _safe_get_max_tokens(full_model)
+        if context_window is None:
             # フォールバック: よくある 8k window を仮定
             log.warning(
                 "model_max_tokens_unknown",
                 extra={"model": full_model, "fallback": 8000},
             )
-            max_tokens = 8000
-        size = max_tokens - self._reserve_tokens
+            context_window = 8000
+        size = context_window - self._reserve_tokens
         if size <= 0:
             raise SummarizationError(
-                f"reserve_tokens={self._reserve_tokens} がモデル上限 {max_tokens} を超えています"
+                f"reserve_tokens={self._reserve_tokens} がモデル context window "
+                f"{context_window} を超えています"
             )
         return size
 
@@ -351,12 +354,36 @@ class ChunkedLLMSummarizer:
 
 
 def _safe_get_max_tokens(full_model: str) -> int | None:
-    """litellm.get_max_tokens の例外を握りつぶして None 返却."""
+    """モデルの**入力 context window** を返す (チャンクサイズ自動算出用).
+
+    litellm の規約では ``max_tokens`` は出力上限なので、入力 context window として
+    扱うべきは ``max_input_tokens``. これを優先し、未公開のバックエンドのみ
+    ``max_tokens`` にフォールバックする.
+
+    例 (gemini-2.5-flash):
+
+    * ``max_input_tokens``: 1,048,576  ← これを採用
+    * ``max_tokens`` / ``max_output_tokens``: 65,535
+
+    過去 (#23 修正前) は ``litellm.get_max_tokens`` 経由で出力上限の方を読んでいたため、
+    1M context window のモデルでも 57k tokens で chunked 経路に突入する不具合があった.
+    """
     try:
-        n: int | None = litellm.get_max_tokens(full_model)  # type: ignore[reportUnknownMemberType]
-        return int(n) if n else None
+        raw: Any = litellm.get_model_info(full_model)  # type: ignore[reportUnknownMemberType]
     except Exception:
         return None
+    if not isinstance(raw, dict):
+        return None
+    info: dict[str, Any] = raw  # type: ignore[reportUnknownVariableType]
+    # 入力 context window を優先 (litellm 規約)
+    max_input: Any = info.get("max_input_tokens")
+    if max_input:
+        return int(max_input)
+    # 古いバックエンドで max_input_tokens 未公開の場合のみ max_tokens にフォールバック.
+    # 注: ここでの max_tokens は厳密には出力上限だが、そもそも max_input_tokens を
+    # 公開していないモデルは context window と output limit が同値であることが多い.
+    max_tokens: Any = info.get("max_tokens")
+    return int(max_tokens) if max_tokens else None
 
 
 class _MetricsAggregator:

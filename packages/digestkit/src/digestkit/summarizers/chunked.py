@@ -91,6 +91,7 @@ class ChunkedLLMSummarizer:
         default_length: str = "standard",
         system_prompt: str = "",
         timeout: float | None = None,
+        num_retries: int = 0,
     ) -> None:
         if chunk_size is not None and chunk_size <= 0:
             raise ValueError("chunk_size は正の整数か None")
@@ -100,6 +101,8 @@ class ChunkedLLMSummarizer:
             raise ValueError("chunk_overlap は chunk_size より小さい必要があります")
         if reserve_tokens < 0:
             raise ValueError("reserve_tokens は 0 以上")
+        if num_retries < 0:
+            raise ValueError("num_retries は 0 以上の整数である必要があります")
         if "{text}" not in map_prompt:
             raise ValueError("map_prompt に '{text}' プレースホルダが必要です")
         if "{text}" not in reduce_prompt:
@@ -124,6 +127,7 @@ class ChunkedLLMSummarizer:
         self._default_length = default_length
         self._system_prompt = system_prompt
         self._timeout = timeout
+        self._num_retries = num_retries
 
     # ------------------------------------------------------------------ public
 
@@ -333,7 +337,10 @@ class ChunkedLLMSummarizer:
         start = time.perf_counter()
         try:
             response: Any = litellm.completion(  # type: ignore[reportUnknownMemberType]
-                model=full_model, messages=messages, timeout=self._timeout
+                model=full_model,
+                messages=messages,
+                timeout=self._timeout,
+                num_retries=self._num_retries,
             )
         except Exception as e:
             raise SummarizationError(str(e)) from e

@@ -65,7 +65,10 @@ class LLMSummarizer:
         prompts: dict[str, str] | None = None,
         default_length: str = "standard",
         timeout: float | None = None,
+        num_retries: int = 0,
     ) -> None:
+        if num_retries < 0:
+            raise ValueError("num_retries は 0 以上の整数である必要があります")
         if user_prompt_template is not None and prompts is not None:
             raise ValueError(
                 "user_prompt_template と prompts は同時に指定できません。"
@@ -92,6 +95,7 @@ class LLMSummarizer:
         self._prompts: dict[str, str] | None = dict(prompts) if prompts else None
         self._default_length = default_length
         self._timeout = timeout
+        self._num_retries = num_retries
 
     def _resolve_template(self, length: str | None) -> str:
         """length 引数を踏まえて使用するテンプレートを 1 つ返す."""
@@ -125,7 +129,10 @@ class LLMSummarizer:
         start = time.perf_counter()
         try:
             response: Any = litellm.completion(  # type: ignore[reportUnknownMemberType]
-                model=full_model, messages=messages, timeout=self._timeout
+                model=full_model,
+                messages=messages,
+                timeout=self._timeout,
+                num_retries=self._num_retries,
             )
         except Exception as e:
             raise SummarizationError(str(e)) from e

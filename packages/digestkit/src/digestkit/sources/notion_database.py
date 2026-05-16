@@ -107,14 +107,69 @@ class NotionDatabaseSource:
         self._query_filter = query_filter
         self._url_property = url_property
         self._client: Client | None = None
+        # Issue #41: Notion 3.x Data Sources API 解決結果のキャッシュ.
+        # ``_data_source_resolved`` は「解決済みか」を示すフラグで、
+        # ``_data_source_id`` は新 API 用 ID (None = 旧 API で fallback)。
+        # None の意味が二通り (未解決 / 解決済みだが旧 API) あるためフラグを別途持つ。
+        self._data_source_resolved: bool = False
+        self._data_source_id: str | None = None
 
     def _get_client(self) -> Client:
         if self._client is None:
             self._client = Client(auth=self._token)
         return self._client
 
+    def _resolve_data_source_id(self) -> str | None:
+        """Notion 3.x の data source ID を解決する (初回のみ API 呼び出し、以降キャッシュ).
+
+        ``databases.retrieve`` の応答 ``data_sources`` が空でなければその先頭 ID を返す.
+        空 / キー不在の場合は旧 API へ fallback すべく ``None`` を返す.
+        想定外の構造 (list でない / 要素が dict でない / id が文字列でない) は
+        ``DigestkitError`` で明示的に弾く.
+        """
+        if self._data_source_resolved:
+            return self._data_source_id
+        client = self._get_client()
+        retrieved: Any = client.request(
+            path=f"databases/{self._database_id}",
+            method="GET",
+        )
+        if isinstance(retrieved, dict):
+            data_sources: Any = cast("dict[str, Any]", retrieved).get("data_sources")
+        else:
+            data_sources = None
+        resolved: str | None = None
+        if data_sources is not None:
+            if not isinstance(data_sources, list):
+                raise DigestkitError(
+                    "NotionDatabaseSource: databases.retrieve の data_sources が"
+                    " list ではありません"
+                )
+            ds_list = cast("list[Any]", data_sources)
+            if ds_list:
+                first: Any = ds_list[0]
+                if not isinstance(first, dict):
+                    raise DigestkitError(
+                        "NotionDatabaseSource: data_sources[0] が dict ではありません"
+                    )
+                first_dict = cast("dict[str, Any]", first)
+                ds_id: Any = first_dict.get("id")
+                if not isinstance(ds_id, str) or not ds_id:
+                    raise DigestkitError(
+                        "NotionDatabaseSource: data_sources[0].id が文字列ではありません"
+                    )
+                resolved = ds_id
+        self._data_source_id = resolved
+        self._data_source_resolved = True
+        return resolved
+
     def fetch(self) -> Iterable[Item]:
         client = self._get_client()
+        data_source_id = self._resolve_data_source_id()
+        if data_source_id is not None:
+            query_path = f"data_sources/{data_source_id}/query"
+        else:
+            query_path = f"databases/{self._database_id}/query"
         cursor: str | None = None
         while True:
             body: dict[str, Any] = {}
@@ -123,7 +178,7 @@ class NotionDatabaseSource:
             if self._query_filter is not None:
                 body["filter"] = self._query_filter
             response: Any = client.request(
-                path=f"databases/{self._database_id}/query",
+                path=query_path,
                 method="POST",
                 body=body,
             )

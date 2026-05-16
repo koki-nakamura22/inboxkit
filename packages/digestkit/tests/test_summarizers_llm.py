@@ -352,6 +352,50 @@ def test_default_prompts_can_be_used_by_reference() -> None:
     assert "hello" in user_msg["content"]
 
 
+def test_llm_summarizer_accepts_system_prompt_as_content_blocks_for_cache_control() -> None:
+    """system_prompt に content block のリストを渡すと cache_control もそのまま渡る (Issue #39)."""
+    # Arrange
+    system_blocks = [
+        {
+            "type": "text",
+            "text": "<長い system prompt>",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
+    summarizer = LLMSummarizer(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        system_prompt=system_blocks,
+    )
+    item = Item(id="item-1", payload=None)
+    mock_response = _make_mock_response()
+
+    # Act
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("text", item)
+
+    # Assert
+    messages = mock_completion.call_args.kwargs["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == system_blocks
+    # 念のため cache_control が落とされていないことを明示的に検証
+    assert messages[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+    assert messages[1]["role"] == "user"
+
+
+def test_llm_summarizer_omits_system_message_when_blocks_list_is_empty() -> None:
+    """system_prompt に空 list を渡した場合は system メッセージを生成しない (str='' と同等)."""
+    summarizer = LLMSummarizer(provider=_PROVIDER, model=_MODEL, system_prompt=[])
+    item = Item(id="item-1", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("text", item)
+
+    messages = mock_completion.call_args.kwargs["messages"]
+    assert all(m["role"] != "system" for m in messages)
+
+
 def test_llm_summarizer_uses_model_as_full_model_when_slash_present() -> None:
     """model に '/' が含まれる場合、provider を付加せずそのまま litellm へ渡す."""
     # Arrange

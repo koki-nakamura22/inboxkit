@@ -153,6 +153,33 @@ reduce step**; intermediate stages use a neutral merge prompt to avoid
 over-compressing mid-pipeline. On a per-chunk LLM failure the call fails fast with
 the chunk index in the error message.
 
+## Anthropic prompt caching (cache_control)
+
+`LLMSummarizer` の `system_prompt` は `str` のほか、LiteLLM が受け付ける
+content block のリスト (`list[dict]`) でも指定できる。これにより Anthropic
+の prompt caching (`cache_control: {"type": "ephemeral"}`) を有効にして、
+長い system prompt の入力トークン課金を大幅に削減できる:
+
+```python
+from digestkit.summarizers import LLMSummarizer
+
+summarizer = LLMSummarizer(
+    provider="anthropic",
+    model="claude-sonnet-4-6",
+    system_prompt=[
+        {
+            "type": "text",
+            "text": "<長い system prompt (JSON スキーマ・出力例など)>",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ],
+)
+```
+
+`system_prompt` を従来通り `str` で渡した場合の挙動は変わらない (後方互換)。
+詳細は LiteLLM 公式ドキュメントを参照:
+<https://docs.litellm.ai/docs/providers/anthropic#prompt-caching>
+
 ## Configuration
 
 Set your LLM provider API key in a `.env` file (loaded automatically via `python-dotenv`):

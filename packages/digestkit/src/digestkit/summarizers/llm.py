@@ -36,6 +36,25 @@ class LLMSummarizer:
     :pyattr:`LLMSummarizer.DEFAULT_PROMPTS` で公開しており、利用者は
     ``LLMSummarizer(provider=..., model=..., prompts=LLMSummarizer.DEFAULT_PROMPTS)``
     の 1 行で length 機能を有効化できる。
+
+    ``system_prompt`` は ``str`` のほか、LiteLLM が受け付ける content block の
+    リスト (``list[dict[str, Any]]``) でも指定できる。これにより Anthropic の
+    prompt caching (``cache_control: {"type": "ephemeral"}``) を活用できる::
+
+        LLMSummarizer(
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            system_prompt=[
+                {
+                    "type": "text",
+                    "text": "<長い system prompt>",
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
+        )
+
+    詳細は LiteLLM の Anthropic prompt caching ドキュメントを参照:
+    https://docs.litellm.ai/docs/providers/anthropic#prompt-caching
     """
 
     #: 人間向け要約の標準的な 3 段階プロンプト.
@@ -59,7 +78,7 @@ class LLMSummarizer:
         self,
         provider: str,
         model: str,
-        system_prompt: str = "",
+        system_prompt: str | list[dict[str, Any]] = "",
         user_prompt_template: str | None = None,
         *,
         prompts: dict[str, str] | None = None,
@@ -121,7 +140,7 @@ class LLMSummarizer:
         full_model = f"{self._provider}/{self._model}" if "/" not in self._model else self._model
         template = self._resolve_template(length)
         user_prompt = template.format(text=text, item=item)
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         if self._system_prompt:
             messages.append({"role": "system", "content": self._system_prompt})
         messages.append({"role": "user", "content": user_prompt})

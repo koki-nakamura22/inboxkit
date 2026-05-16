@@ -39,6 +39,15 @@ class NotionPageSink:
     ``blocks_builder`` 未指定時は ``heading_2`` + ``paragraph`` の 2 ブロックを
     デフォルトで追記する. 「箇条書き要点 + トグル付き本文」等の複雑な構造を
     組みたい場合は独自の builder を渡す.
+
+    注意点:
+      - **冪等性なし**: ``blocks.children.append`` は文字通り「追記」であり、同じ item
+        に対して 2 回 ``write`` を呼ぶとブロックが 2 回追記される. 重複防止は本 Sink
+        の責務外で、呼び出し側 (例: ``NotionDatabaseSource`` の ``query_filter`` で
+        Status=未読 のみを対象にする運用) で担保する.
+      - **1 リクエスト 100 ブロック上限**: Notion API の ``blocks.children.append``
+        は 1 回の呼び出しで最大 100 ブロックまで. ``blocks_builder`` が 100 を超える
+        ブロックを返した場合、Notion API がエラーを返し ``SinkError`` でラップされる.
     """
 
     def __init__(

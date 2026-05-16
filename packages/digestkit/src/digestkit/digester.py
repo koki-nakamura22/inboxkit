@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, final
 
 from digestkit.dedup import SeenStore, SQLiteSeenStore, default_seen_store_path, item_id_key
-from digestkit.protocols import Extractor, Sink, Source, Summarizer
-from digestkit.types import DigestkitError, Item
+from digestkit.protocols import AckSource, Extractor, Sink, Source, Summarizer
+from digestkit.types import Digest, DigestkitError, Item
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,24 @@ class Digester:
         result = RunResult()
         items = self.source.fetch()
         processed = 0
+        # Issue #27: 書き戻し対応 Source なら per_item で ack を呼ぶ.
+        ack_source: AckSource | None = self.source if isinstance(self.source, AckSource) else None
+
+        def _ack_success(item: Item, digest: Digest) -> None:
+            if ack_source is None:
+                return
+            try:
+                ack_source.ack_success(item, digest)
+            except Exception as exc:
+                logger.warning("ack_success failed for item %s: %s", item.id, exc)
+
+        def _ack_failure(failure: FailureInfo) -> None:
+            if ack_source is None:
+                return
+            try:
+                ack_source.ack_failure(failure)
+            except Exception as exc:
+                logger.warning("ack_failure failed for item %s: %s", failure.item.id, exc)
 
         for item in items:
             if limit is not None and processed >= limit:
@@ -146,7 +164,9 @@ class Digester:
                     dedup_key_value = self.dedup_key(item)
                 except Exception as exc:
                     logger.warning("dedup_key failed for item %s: %s", item.id, exc)
-                    result.failures.append(FailureInfo(item=item, stage="extract", error=exc))
+                    failure = FailureInfo(item=item, stage="extract", error=exc)
+                    result.failures.append(failure)
+                    _ack_failure(failure)
                     processed += 1
                     continue
                 if self.seen_store.has(dedup_key_value):
@@ -158,7 +178,9 @@ class Digester:
                 text = self.extractor.extract(item)
             except Exception as exc:
                 logger.warning("extract failed for item %s: %s", item.id, exc)
-                result.failures.append(FailureInfo(item=item, stage="extract", error=exc))
+                failure = FailureInfo(item=item, stage="extract", error=exc)
+                result.failures.append(failure)
+                _ack_failure(failure)
                 processed += 1
                 continue
 
@@ -175,7 +197,9 @@ class Digester:
                     digest = summarizer_with_length.summarize(text, item, length=length)
             except Exception as exc:
                 logger.warning("summarize failed for item %s: %s", item.id, exc)
-                result.failures.append(FailureInfo(item=item, stage="summarize", error=exc))
+                failure = FailureInfo(item=item, stage="summarize", error=exc)
+                result.failures.append(failure)
+                _ack_failure(failure)
                 processed += 1
                 continue
 
@@ -190,9 +214,12 @@ class Digester:
                         # この分岐に来る時点で必ず計算済み (skip 判定で同じキーを使う).
                         assert dedup_key_value is not None
                         self.seen_store.add(dedup_key_value)
+                    _ack_success(item, digest)
                 except Exception as exc:
                     logger.warning("sink.write failed for item %s: %s", item.id, exc)
-                    result.failures.append(FailureInfo(item=item, stage="write", error=exc))
+                    failure = FailureInfo(item=item, stage="write", error=exc)
+                    result.failures.append(failure)
+                    _ack_failure(failure)
 
             processed += 1
 

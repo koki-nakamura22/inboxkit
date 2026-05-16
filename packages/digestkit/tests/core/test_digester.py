@@ -12,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from digestkit.digester import ConfigurationError, Digester
+from digestkit.digester import ConfigurationError, Digester, FailureInfo
+from digestkit.protocols import AckSource
 from digestkit.types import Digest, DigestkitError, Item
 
 # ---------------------------------------------------------------------------
@@ -573,3 +574,156 @@ def test_digester_ctor_kwargs_missing_required_raises() -> None:
     # sink を渡し忘れたケース
     with pytest.raises(ConfigurationError, match="sink"):
         Digester(source=src, extractor=ext, summarizer=summ, seen_store=None)
+
+
+# ---------------------------------------------------------------------------
+# Issue #27: AckSource per_item ack
+# ---------------------------------------------------------------------------
+
+
+class _SpyAckSource:
+    """AckSource 実装. ack 呼び出しを順序付きで記録する."""
+
+    def __init__(self, items: list[Item], *, fail_ack: bool = False) -> None:
+        self._items = items
+        self._fail_ack = fail_ack
+        self.calls: list[tuple[str, str]] = []  # ("success"|"failure", item_id)
+        self.success_args: list[tuple[Item, Digest]] = []
+        self.failure_args: list[FailureInfo] = []
+
+    def fetch(self) -> Iterable[Item]:
+        return iter(self._items)
+
+    def ack_success(self, item: Item, digest: Digest) -> None:
+        self.calls.append(("success", item.id))
+        self.success_args.append((item, digest))
+        if self._fail_ack:
+            raise RuntimeError(f"ack_success boom: {item.id}")
+
+    def ack_failure(self, failure: FailureInfo) -> None:
+        self.calls.append(("failure", failure.item.id))
+        self.failure_args.append(failure)
+        if self._fail_ack:
+            raise RuntimeError(f"ack_failure boom: {failure.item.id}")
+
+
+def test_ack_source_runtime_checkable() -> None:
+    """AckSource は runtime_checkable. isinstance で判別できる."""
+    plain = _StubSource(_make_items(1))
+    ack = _SpyAckSource(_make_items(1))
+    assert not isinstance(plain, AckSource)
+    assert isinstance(ack, AckSource)
+
+
+def test_run_calls_ack_success_after_sink_write() -> None:
+    """AckSource なら sink.write 成功直後に ack_success が呼ばれる."""
+    items = _make_items(3)
+    src = _SpyAckSource(items)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(),
+        seen_store=None,
+    )
+
+    result = d.run()
+
+    assert result.success == 3
+    assert src.calls == [("success", "0"), ("success", "1"), ("success", "2")]
+    # ack_success に渡される digest は summarizer が生成したもの
+    assert all(d.summary == f"summary:{item.id}" for item, d in src.success_args)
+
+
+def test_run_calls_ack_failure_on_extract_summarize_write_failure() -> None:
+    """ack_failure が extract / summarize / write 各失敗時に呼ばれる."""
+    # extract 失敗
+    items = _make_items(3)
+    src = _SpyAckSource(items)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(fail_on={"1"}),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(fail_on={"2"}),
+        seen_store=None,
+    )
+
+    result = d.run()
+
+    # 0: success / 1: extract failure / 2: write failure
+    assert result.success == 1
+    assert len(result.failures) == 2
+    assert src.calls == [
+        ("success", "0"),
+        ("failure", "1"),
+        ("failure", "2"),
+    ]
+    assert [f.stage for f in src.failure_args] == ["extract", "write"]
+
+
+def test_run_calls_ack_failure_on_summarize_failure() -> None:
+    """summarize 失敗で ack_failure が stage='summarize' で呼ばれる."""
+    items = _make_items(2)
+    src = _SpyAckSource(items)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(fail_on={"0"}),
+        sink=_SpySink(),
+        seen_store=None,
+    )
+
+    d.run()
+
+    assert src.calls == [("failure", "0"), ("success", "1")]
+    assert src.failure_args[0].stage == "summarize"
+
+
+def test_run_continues_when_ack_itself_raises() -> None:
+    """ack 自体の例外はループを止めない (warning ログのみ)."""
+    items = _make_items(3)
+    src = _SpyAckSource(items, fail_ack=True)
+    sink = _SpySink()
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(fail_on={"1"}),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+    )
+
+    result = d.run()
+
+    # ack が毎回 raise しても、success / failures カウントは通常通り進む
+    assert result.success == 2
+    assert len(result.failures) == 1
+    # 全 item の sink.write は処理される
+    assert {c[1].id for c in sink.calls} == {"0", "2"}
+    # ack も全件呼ばれた (raise されても捕捉して継続)
+    assert len(src.calls) == 3
+
+
+def test_run_does_not_call_ack_on_plain_source() -> None:
+    """非 AckSource (Source のみ) では ack 系メソッドは呼ばれない (= AttributeError も出ない)."""
+    items = _make_items(2)
+    plain = _StubSource(items)  # ack_success / ack_failure を持たない
+    d = Digester(
+        source=plain,
+        extractor=_SpyExtractor(fail_on={"0"}),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(),
+        seen_store=None,
+    )
+
+    result = d.run()
+
+    # 通常どおり: 1 件成功 / 1 件失敗。ack 不在でも例外は出ない
+    assert result.success == 1
+    assert len(result.failures) == 1
+
+
+def test_ack_source_exported_from_public_api() -> None:
+    """AckSource は digestkit パッケージから直接 import できる."""
+    from digestkit import AckSource as PublicAckSource
+
+    assert PublicAckSource is AckSource

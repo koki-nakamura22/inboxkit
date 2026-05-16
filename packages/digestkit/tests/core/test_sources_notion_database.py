@@ -10,12 +10,15 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from digestkit.digester import ConfigurationError
+from digestkit.digester import ConfigurationError, FailureInfo
+from digestkit.protocols import AckSource
 from digestkit.sources.notion_database import NotionDatabaseSource
+from digestkit.types import Digest, Item
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures" / "notion"
 
@@ -130,3 +133,238 @@ def test_notion_database_source_uses_env_token() -> None:
 
     # Assert — 環境変数の token で Client が初期化された
     mock_cls.assert_called_once_with(auth="env-token")
+
+
+# Issue #29: AckSource 実装 (書き戻し) ---------------------------------------
+
+
+def _make_digest() -> Digest:
+    return Digest(summary="s", tokens_in=1, tokens_out=1, latency_ms=1, model="m")
+
+
+def test_notion_database_source_implements_ack_source_protocol() -> None:
+    """AckSource Protocol を structural subtyping で満たす."""
+    with patch("digestkit.sources.notion_database.Client", return_value=MagicMock()):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+    assert isinstance(source, AckSource)
+
+
+def test_notion_database_source_query_filter_is_passed_to_request() -> None:
+    """query_filter 指定時、body に filter が含まれる."""
+    # Arrange
+    mock_client = MagicMock()
+    mock_client.request.return_value = {"results": [], "next_cursor": None}
+    query_filter = {"property": "Status", "select": {"equals": "未読"}}
+
+    # Act
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t", query_filter=query_filter)
+        list(source.fetch())
+
+    # Assert
+    body = mock_client.request.call_args.kwargs["body"]
+    assert body["filter"] == query_filter
+
+
+def test_notion_database_source_query_filter_omitted_when_unset() -> None:
+    """query_filter 未指定時、body に filter キーは付かない (既存挙動)."""
+    mock_client = MagicMock()
+    mock_client.request.return_value = {"results": [], "next_cursor": None}
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        list(source.fetch())
+    body = mock_client.request.call_args.kwargs["body"]
+    assert "filter" not in body
+
+
+def test_ack_success_updates_status_property_when_configured() -> None:
+    """status_property + status_value_success 指定時に pages.update が呼ばれる."""
+    mock_client = MagicMock()
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_success="処理済み",
+        )
+        source.ack_success(Item(id="page-1", payload={}), _make_digest())
+
+    mock_client.pages.update.assert_called_once_with(
+        page_id="page-1",
+        properties={"Status": {"select": {"name": "処理済み"}}},
+    )
+
+
+def test_ack_failure_updates_status_property_when_configured() -> None:
+    """status_property + status_value_failure 指定時に pages.update が呼ばれる."""
+    mock_client = MagicMock()
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_failure="失敗",
+        )
+        failure = FailureInfo(
+            item=Item(id="page-2", payload={}),
+            stage="summarize",
+            error=RuntimeError("boom"),
+        )
+        source.ack_failure(failure)
+
+    mock_client.pages.update.assert_called_once_with(
+        page_id="page-2",
+        properties={"Status": {"select": {"name": "失敗"}}},
+    )
+
+
+def test_ack_success_is_noop_when_no_writeback_configured() -> None:
+    """書き戻し設定が無ければ ack_success は pages.update を呼ばない."""
+    mock_client = MagicMock()
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        source.ack_success(Item(id="page-1", payload={}), _make_digest())
+    mock_client.pages.update.assert_not_called()
+
+
+def test_ack_failure_is_noop_when_no_writeback_configured() -> None:
+    """書き戻し設定が無ければ ack_failure は pages.update を呼ばない."""
+    mock_client = MagicMock()
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        failure = FailureInfo(
+            item=Item(id="page-2", payload={}),
+            stage="extract",
+            error=RuntimeError("x"),
+        )
+        source.ack_failure(failure)
+    mock_client.pages.update.assert_not_called()
+
+
+def test_ack_success_merges_properties_on_success_callback() -> None:
+    """properties_on_success コールバックで追加プロパティを書ける."""
+    mock_client = MagicMock()
+
+    def extra(item: Item, digest: Digest) -> dict[str, Any]:
+        return {"Summary": {"rich_text": [{"text": {"content": digest.summary}}]}}
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_success="処理済み",
+            properties_on_success=extra,
+        )
+        source.ack_success(Item(id="page-1", payload={}), _make_digest())
+
+    called_props = mock_client.pages.update.call_args.kwargs["properties"]
+    assert called_props["Status"] == {"select": {"name": "処理済み"}}
+    assert called_props["Summary"] == {
+        "rich_text": [{"text": {"content": "s"}}],
+    }
+
+
+def test_ack_failure_merges_properties_on_failure_callback() -> None:
+    """properties_on_failure コールバックで追加プロパティを書ける."""
+    mock_client = MagicMock()
+
+    def extra(failure: FailureInfo) -> dict[str, Any]:
+        return {"ErrorStage": {"select": {"name": failure.stage}}}
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            properties_on_failure=extra,
+        )
+        failure = FailureInfo(
+            item=Item(id="page-2", payload={}),
+            stage="write",
+            error=RuntimeError("x"),
+        )
+        source.ack_failure(failure)
+
+    mock_client.pages.update.assert_called_once_with(
+        page_id="page-2",
+        properties={"ErrorStage": {"select": {"name": "write"}}},
+    )
+
+
+def test_ack_success_callback_only_no_status_property() -> None:
+    """status_property 未指定でも properties_on_success のみで書き戻しできる."""
+    mock_client = MagicMock()
+
+    def extra(item: Item, digest: Digest) -> dict[str, Any]:
+        return {"Tag": {"select": {"name": "ok"}}}
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t", properties_on_success=extra)
+        source.ack_success(Item(id="page-1", payload={}), _make_digest())
+
+    mock_client.pages.update.assert_called_once_with(
+        page_id="page-1",
+        properties={"Tag": {"select": {"name": "ok"}}},
+    )
+
+
+def test_init_raises_when_status_property_without_values() -> None:
+    """status_property のみ指定 (status_value_* なし) は ConfigurationError."""
+    with (
+        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        pytest.raises(ConfigurationError, match="status_value_success"),
+    ):
+        NotionDatabaseSource(database_id="db-id", token="t", status_property="Status")
+
+
+def test_init_raises_when_status_value_success_without_property() -> None:
+    """status_value_success のみ指定 (status_property なし) は ConfigurationError."""
+    with (
+        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        pytest.raises(ConfigurationError, match="status_property"),
+    ):
+        NotionDatabaseSource(database_id="db-id", token="t", status_value_success="処理済み")
+
+
+def test_init_raises_when_status_value_failure_without_property() -> None:
+    """status_value_failure のみ指定 (status_property なし) は ConfigurationError."""
+    with (
+        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        pytest.raises(ConfigurationError, match="status_property"),
+    ):
+        NotionDatabaseSource(database_id="db-id", token="t", status_value_failure="失敗")
+
+
+def test_init_ok_when_status_property_with_only_success_value() -> None:
+    """status_property + status_value_success のみは OK (failure は no-op で構わない)."""
+    with patch("digestkit.sources.notion_database.Client", return_value=MagicMock()):
+        NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_success="処理済み",
+        )
+
+
+def test_ack_success_callback_overrides_status_property() -> None:
+    """callback が status_property と同じキーを返した場合、callback の値で上書きされる."""
+    mock_client = MagicMock()
+
+    def extra(item: Item, digest: Digest) -> dict[str, Any]:
+        # status 型 (新型) で上書きするユースケース
+        return {"Status": {"status": {"name": "Done"}}}
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_success="処理済み",
+            properties_on_success=extra,
+        )
+        source.ack_success(Item(id="page-1", payload={}), _make_digest())
+
+    mock_client.pages.update.assert_called_once_with(
+        page_id="page-1",
+        properties={"Status": {"status": {"name": "Done"}}},
+    )

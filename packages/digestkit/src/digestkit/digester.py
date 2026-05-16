@@ -85,6 +85,15 @@ class Digester:
     # Issue #28: ack タイミング戦略. ``per_item`` は #27 既定挙動 (各 item の
     # sink.write 直後に ack). ``after_run`` は全 item 処理後に成功/失敗をまとめて
     # ack する (read-later-digest 等の「全通知成功後に書き戻し」用途).
+    #
+    # ``after_run`` の注意点:
+    #   - run() が完走した時のみ ack を発行する. ループ途中で
+    #     ``KeyboardInterrupt`` 等の外部例外で抜けた場合、バッファ済み ack は
+    #     発行されないまま破棄される (= 未 ack 扱い. 次回 run で再処理させる前提).
+    #   - run() 完了までバッファに (Item, Digest) と FailureInfo を保持するため、
+    #     ``Source.fetch()`` がジェネレータで遅延評価される場合でも after_run 時は
+    #     全件分のメモリを消費する. 数万件級のストリーミング処理で利用する場合は
+    #     ``per_item`` を選ぶか、Source 側でバッチ分割すること.
     ack_mode: AckMode = "per_item"
 
     def __init__(

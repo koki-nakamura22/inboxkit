@@ -177,6 +177,23 @@ summarizer = LLMSummarizer(
 ```
 
 `system_prompt` を従来通り `str` で渡した場合の挙動は変わらない (後方互換)。
+
+block 構造を意識せず system prompt 全体をキャッシュしたいだけの場合は、
+`system_prompt_cache=True` フラグを指定する簡素な経路も用意している:
+
+```python
+summarizer = LLMSummarizer(
+    provider="anthropic",
+    model="claude-sonnet-4-6",
+    system_prompt="<長い system prompt>",
+    system_prompt_cache=True,   # str を ephemeral cache_control 付き block に自動変換
+)
+```
+
+複数 block のうち一部だけキャッシュしたい等の細かい制御が必要な場合は
+list 指定 (上記サンプル) を使う。`system_prompt_cache=True` と list 指定は
+同時に使えない (cache_control の制御権が衝突するため)。
+
 詳細は LiteLLM 公式ドキュメントを参照:
 <https://docs.litellm.ai/docs/providers/anthropic#prompt-caching>
 

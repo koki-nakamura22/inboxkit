@@ -396,6 +396,80 @@ def test_llm_summarizer_omits_system_message_when_blocks_list_is_empty() -> None
     assert all(m["role"] != "system" for m in messages)
 
 
+def test_llm_summarizer_system_prompt_cache_flag_wraps_str_with_cache_control() -> None:
+    """system_prompt_cache=True + str で ephemeral cache_control 付き block が自動生成 (案 B)."""
+    # Arrange
+    summarizer = LLMSummarizer(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        system_prompt="<長い system prompt>",
+        system_prompt_cache=True,
+    )
+    item = Item(id="item-1", payload=None)
+    mock_response = _make_mock_response()
+
+    # Act
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("text", item)
+
+    # Assert
+    messages = mock_completion.call_args.kwargs["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == [
+        {
+            "type": "text",
+            "text": "<長い system prompt>",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+
+
+def test_llm_summarizer_system_prompt_cache_flag_default_false_keeps_str_plain() -> None:
+    """system_prompt_cache を指定しない場合は従来通り plain str で渡る (後方互換)."""
+    summarizer = LLMSummarizer(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        system_prompt="<長い system prompt>",
+    )
+    item = Item(id="item-1", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("text", item)
+
+    messages = mock_completion.call_args.kwargs["messages"]
+    assert messages[0] == {"role": "system", "content": "<長い system prompt>"}
+
+
+def test_llm_summarizer_system_prompt_cache_flag_with_list_raises() -> None:
+    """system_prompt_cache=True と system_prompt の list 指定は同時に使えない (案 B)."""
+    with pytest.raises(ValueError, match="system_prompt_cache"):
+        LLMSummarizer(
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            system_prompt=[{"type": "text", "text": "x"}],
+            system_prompt_cache=True,
+        )
+
+
+def test_llm_summarizer_system_prompt_cache_flag_with_empty_str_omits_system() -> None:
+    """system_prompt_cache=True でも system_prompt が空文字なら system メッセージは生成されない."""
+    summarizer = LLMSummarizer(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        system_prompt="",
+        system_prompt_cache=True,
+    )
+    item = Item(id="item-1", payload=None)
+    mock_response = _make_mock_response()
+
+    with patch(_PATCH, return_value=mock_response) as mock_completion:
+        summarizer.summarize("text", item)
+
+    messages = mock_completion.call_args.kwargs["messages"]
+    assert all(m["role"] != "system" for m in messages)
+
+
 def test_llm_summarizer_uses_model_as_full_model_when_slash_present() -> None:
     """model に '/' が含まれる場合、provider を付加せずそのまま litellm へ渡す."""
     # Arrange

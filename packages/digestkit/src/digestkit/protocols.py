@@ -29,7 +29,10 @@ class AckSource(Protocol):
         ack 済みのはずで、呼び直さない.
       - dedup_key 計算失敗: ``stage='extract'`` として ack_failure を呼ぶ.
 
-    全 item 処理後の一括 ack (after_run モード) は Issue #28 で別途扱う.
+    Issue #28: Digester.ack_mode='after_run' を指定すると、run() ループ中は ack を
+    呼ばずに成功/失敗を内部バッファに溜め、全 item 処理後にまとめて
+    ack_success / ack_failure を順次呼ぶ. dry_run / seen_store ヒット時に ack を
+    呼ばない方針は per_item と同じ.
     """
 
     def fetch(self) -> Iterable[Item]: ...

@@ -32,11 +32,20 @@ class _DedupKeySentinel:
 _DEDUP_KEY_UNSET = _DedupKeySentinel()
 
 
+@final
+class _AckModeSentinel:
+    """Sentinel distinguishing "not provided" from explicit value in Digester.__init__."""
+
+
+_ACK_MODE_UNSET = _AckModeSentinel()
+
+
 class ConfigurationError(DigestkitError):
     """Digester サブクラスの設定不備 (必須属性欠落 等)."""
 
 
 FailureStage = Literal["extract", "summarize", "write"]
+AckMode = Literal["per_item", "after_run"]
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,11 @@ class Digester:
     # 属性を kwarg が override する (seen_store/dedup_key と同じハイブリッド
     # パターン). factory method ではなく __init__ のシグネチャ拡張.
 
+    # Issue #28: ack タイミング戦略. ``per_item`` は #27 既定挙動 (各 item の
+    # sink.write 直後に ack). ``after_run`` は全 item 処理後に成功/失敗をまとめて
+    # ack する (read-later-digest 等の「全通知成功後に書き戻し」用途).
+    ack_mode: AckMode = "per_item"
+
     def __init__(
         self,
         *,
@@ -82,6 +96,7 @@ class Digester:
         sink: Sink | None = None,
         seen_store: SeenStore | None | _SeenStoreSentinel = _SEEN_STORE_UNSET,
         dedup_key: DedupKeyFn | _DedupKeySentinel = _DEDUP_KEY_UNSET,
+        ack_mode: AckMode | _AckModeSentinel = _ACK_MODE_UNSET,
     ) -> None:
         # kwarg が渡されたものはインスタンス属性として設定 (class 属性を override).
         # None のまま渡された場合は「未指定」扱いで、class 属性があればそれを使う.
@@ -110,6 +125,9 @@ class Digester:
             self.dedup_key = item_id_key
         # else: subclass defined dedup_key as class attribute; leave it as-is
 
+        if not isinstance(ack_mode, _AckModeSentinel):
+            self.ack_mode = ack_mode
+
     def run(
         self,
         limit: int | None = None,
@@ -132,11 +150,18 @@ class Digester:
         result = RunResult()
         items = self.source.fetch()
         processed = 0
-        # Issue #27: 書き戻し対応 Source なら per_item で ack を呼ぶ.
+        # Issue #27 / #28: 書き戻し対応 Source なら ack を呼ぶ. ack_mode により
+        # per_item (即時) / after_run (run 完走後に一括) を切り替える.
         ack_source: AckSource | None = self.source if isinstance(self.source, AckSource) else None
+        defer_ack = ack_source is not None and self.ack_mode == "after_run"
+        pending_successes: list[tuple[Item, Digest]] = []
+        pending_failures: list[FailureInfo] = []
 
         def _ack_success(item: Item, digest: Digest) -> None:
             if ack_source is None:
+                return
+            if defer_ack:
+                pending_successes.append((item, digest))
                 return
             try:
                 ack_source.ack_success(item, digest)
@@ -145,6 +170,9 @@ class Digester:
 
         def _ack_failure(failure: FailureInfo) -> None:
             if ack_source is None:
+                return
+            if defer_ack:
+                pending_failures.append(failure)
                 return
             try:
                 ack_source.ack_failure(failure)
@@ -222,6 +250,20 @@ class Digester:
                     _ack_failure(failure)
 
             processed += 1
+
+        # Issue #28: after_run モードでは run 完走後にバッファした ack を順次発行する.
+        # ack 自体の失敗は per_item と同じく warning + 継続 (1 件失敗で残りを止めない).
+        if defer_ack and ack_source is not None:
+            for item, digest in pending_successes:
+                try:
+                    ack_source.ack_success(item, digest)
+                except Exception as exc:
+                    logger.warning("ack_success failed for item %s: %s", item.id, exc)
+            for failure in pending_failures:
+                try:
+                    ack_source.ack_failure(failure)
+                except Exception as exc:
+                    logger.warning("ack_failure failed for item %s: %s", failure.item.id, exc)
 
         logger.info(
             "run complete: success=%d skipped=%d failures=%d",

@@ -40,6 +40,7 @@ def test_sinks_public_api() -> None:
     from digestkit.sinks import (
         CompositeSink,
         EmailSink,
+        NotionPageSink,
         SinkError,
         SlackSink,
         SQLiteSink,
@@ -47,6 +48,7 @@ def test_sinks_public_api() -> None:
 
     assert CompositeSink is not None
     assert EmailSink is not None
+    assert NotionPageSink is not None
     assert SinkError is not None
     assert SlackSink is not None
     assert SQLiteSink is not None

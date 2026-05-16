@@ -155,6 +155,24 @@ class Digester:
                 None なら summarizer に length 引数を渡さず呼び出すため、
                 Summarizer Protocol だけを満たすカスタム実装でも従来どおり
                 動作する.
+
+        Notes:
+            Issue #32: sink.write 成功後の帳簿更新失敗の扱い.
+              ``sink.write`` が成功した時点で副作用 (Slack 通知 / メール送信 /
+              Notion ページ書き込み 等) は既に外部に出ている. その後の
+              ``seen_store.add`` が失敗しても、これを ``ack_failure(stage="write")``
+              に降格させると source 側 (例: NotionDatabaseSource の Status 書き戻し)
+              が「失敗」となり、次回 run で再処理 = 副作用の二重発行を招く.
+              そこで以下の契約を採用する:
+
+              - ``sink.write`` の失敗のみが ``FailureInfo(stage="write")`` と
+                ``ack_failure`` を発生させる.
+              - ``sink.write`` 成功直後に ``result.success`` を加算する
+                (帳簿更新の成否に依存しない).
+              - ``seen_store.add`` 失敗は warning ログのみで握りつぶす. その item は
+                次回 run で再処理対象になる可能性があるが、source 側 dedup
+                (例: Notion DB Status フィルタ) が機能していれば実害は出ない.
+              - ``ack_success`` は ``seen_store.add`` の成否に関わらず発行する.
         """
         result = RunResult()
         items = self.source.fetch()
@@ -243,20 +261,50 @@ class Digester:
             if dry_run:
                 result.skipped += 1
             else:
+                # Issue #32: sink.write の成功/失敗と、その後の帳簿更新
+                # (seen_store.add) の失敗を混同しない. 旧実装では同じ try で守って
+                # いたため、Slack 通知済み / Notion ページ書き込み済み等の副作用が
+                # 既に外に出ているにも関わらず seen_store.add の例外で
+                # ack_failure(stage="write") が呼ばれ、source 側の状態が不整合に
+                # なる (例: Notion DB Status が「失敗」に書き戻され、次回再処理で
+                # 二重送信) 問題があった. ここでは:
+                #   1) sink.write のみを try で守り、失敗時のみ stage="write"
+                #   2) success カウントは sink.write 成功直後にインクリメント
+                #   3) seen_store.add 失敗は warning ログのみ (副作用は巻き戻せない
+                #      ため ack_failure には降格させない. 次回 run で再処理される
+                #      可能性は残るが、ack_success 側で source 自身の dedup
+                #      (Notion DB Status 等) が効くケースが多い)
+                #   4) ack_success は seen_store.add の成否に関わらず発行する
                 try:
                     self.sink.write(digest, item)
-                    result.success += 1
-                    if self.seen_store is not None:
-                        # dedup_key_value は dry_run=False かつ seen_store!=None の
-                        # この分岐に来る時点で必ず計算済み (skip 判定で同じキーを使う).
-                        assert dedup_key_value is not None
-                        self.seen_store.add(dedup_key_value)
-                    _ack_success(item, digest)
                 except Exception as exc:
                     logger.warning("sink.write failed for item %s: %s", item.id, exc)
                     failure = FailureInfo(item=item, stage="write", error=exc)
                     result.failures.append(failure)
                     _ack_failure(failure)
+                    processed += 1
+                    continue
+
+                result.success += 1
+
+                if self.seen_store is not None:
+                    # dedup_key_value は dry_run=False かつ seen_store!=None の
+                    # この分岐に来る時点で必ず計算済み (skip 判定で同じキーを使う).
+                    assert dedup_key_value is not None
+                    try:
+                        self.seen_store.add(dedup_key_value)
+                    except Exception as exc:
+                        logger.warning(
+                            "seen_store.add failed after successful sink.write "
+                            "for item %s: %s "
+                            "(sink side effects already applied; item may be "
+                            "re-processed on next run if source-side dedup "
+                            "does not catch it)",
+                            item.id,
+                            exc,
+                        )
+
+                _ack_success(item, digest)
 
             processed += 1
 

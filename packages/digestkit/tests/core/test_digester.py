@@ -577,6 +577,110 @@ def test_digester_ctor_kwargs_missing_required_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Issue #32: sink.write 成功後の seen_store.add 失敗の扱い
+# ---------------------------------------------------------------------------
+
+
+class _FlakySeenStore:
+    """add() が指定 item id で raise する SeenStore."""
+
+    def __init__(self, fail_on: set[str]) -> None:
+        self._seen: set[str] = set()
+        self._fail_on = fail_on
+
+    def has(self, item_id: str) -> bool:
+        return item_id in self._seen
+
+    def add(self, item_id: str) -> None:
+        if item_id in self._fail_on:
+            raise RuntimeError(f"seen_store.add boom: {item_id}")
+        self._seen.add(item_id)
+
+
+def test_seen_store_add_failure_after_successful_write_is_not_ack_failure() -> None:
+    """Issue #32: sink.write 成功後の seen_store.add 失敗は ack_failure を発生させない.
+
+    旧実装では同じ try で守っていたため stage="write" の ack_failure が呼ばれて
+    source 側の状態が「失敗」に書き戻されていた. 採用案 C ではこれを ack_success
+    に正す (副作用は既に外に出ているため).
+    """
+    items = _make_items(2)
+    src = _SpyAckSource(items)
+    sink = _SpySink()
+    store = _FlakySeenStore(fail_on={"0"})
+
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=store,
+    )
+
+    result = d.run()
+
+    # 両 item とも sink.write は成功している
+    assert {c[1].id for c in sink.calls} == {"0", "1"}
+    # success は 2 件 (seen_store.add 失敗は success カウントを巻き戻さない)
+    assert result.success == 2
+    # failures は 0 (seen_store.add 失敗は failures に積まれない)
+    assert result.failures == []
+    # ack は両方とも ack_success (item "0" を ack_failure にしない)
+    assert src.calls == [("success", "0"), ("success", "1")]
+
+
+def test_seen_store_add_failure_does_not_block_subsequent_items() -> None:
+    """Issue #32: seen_store.add が途中で失敗しても以後の item 処理は止まらない."""
+    items = _make_items(3)
+    sink = _SpySink()
+    store = _FlakySeenStore(fail_on={"1"})
+
+    d = Digester(
+        source=_StubSource(items),
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=store,
+    )
+
+    result = d.run()
+
+    assert result.success == 3
+    assert result.failures == []
+    assert [c[1].id for c in sink.calls] == ["0", "1", "2"]
+    # 成功した add の分だけ seen_store に積まれる
+    assert store.has("0")
+    assert not store.has("1")  # raise したため積まれていない
+    assert store.has("2")
+
+
+def test_sink_write_failure_still_routes_to_ack_failure_with_stage_write() -> None:
+    """Issue #32: sink.write 自体の失敗は従来通り ack_failure(stage="write")."""
+    items = _make_items(2)
+    src = _SpyAckSource(items)
+    # seen_store.add は成功するが sink.write が失敗するパターン
+    store = _FakeSeenStore()
+
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(fail_on={"0"}),
+        seen_store=store,
+    )
+
+    result = d.run()
+
+    assert result.success == 1
+    assert len(result.failures) == 1
+    assert result.failures[0].stage == "write"
+    assert src.calls == [("failure", "0"), ("success", "1")]
+    # sink.write が失敗した item は seen_store にも積まれない
+    assert not store.has("0")
+    assert store.has("1")
+
+
+# ---------------------------------------------------------------------------
 # Issue #27: AckSource per_item ack
 # ---------------------------------------------------------------------------
 

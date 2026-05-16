@@ -306,3 +306,65 @@ def test_ack_success_callback_only_no_status_property() -> None:
         page_id="page-1",
         properties={"Tag": {"select": {"name": "ok"}}},
     )
+
+
+def test_init_raises_when_status_property_without_values() -> None:
+    """status_property のみ指定 (status_value_* なし) は ConfigurationError."""
+    with (
+        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        pytest.raises(ConfigurationError, match="status_value_success"),
+    ):
+        NotionDatabaseSource(database_id="db-id", token="t", status_property="Status")
+
+
+def test_init_raises_when_status_value_success_without_property() -> None:
+    """status_value_success のみ指定 (status_property なし) は ConfigurationError."""
+    with (
+        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        pytest.raises(ConfigurationError, match="status_property"),
+    ):
+        NotionDatabaseSource(database_id="db-id", token="t", status_value_success="処理済み")
+
+
+def test_init_raises_when_status_value_failure_without_property() -> None:
+    """status_value_failure のみ指定 (status_property なし) は ConfigurationError."""
+    with (
+        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        pytest.raises(ConfigurationError, match="status_property"),
+    ):
+        NotionDatabaseSource(database_id="db-id", token="t", status_value_failure="失敗")
+
+
+def test_init_ok_when_status_property_with_only_success_value() -> None:
+    """status_property + status_value_success のみは OK (failure は no-op で構わない)."""
+    with patch("digestkit.sources.notion_database.Client", return_value=MagicMock()):
+        NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_success="処理済み",
+        )
+
+
+def test_ack_success_callback_overrides_status_property() -> None:
+    """callback が status_property と同じキーを返した場合、callback の値で上書きされる."""
+    mock_client = MagicMock()
+
+    def extra(item: Item, digest: Digest) -> dict[str, Any]:
+        # status 型 (新型) で上書きするユースケース
+        return {"Status": {"status": {"name": "Done"}}}
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            status_property="Status",
+            status_value_success="処理済み",
+            properties_on_success=extra,
+        )
+        source.ack_success(Item(id="page-1", payload={}), _make_digest())
+
+    mock_client.pages.update.assert_called_once_with(
+        page_id="page-1",
+        properties={"Status": {"status": {"name": "Done"}}},
+    )

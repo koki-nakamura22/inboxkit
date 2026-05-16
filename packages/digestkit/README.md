@@ -93,6 +93,35 @@ Both styles are supported and can be mixed: when a subclass defines class attrib
 any kwarg passed to `__init__` overrides them (kwarg wins). This is the same hybrid
 pattern used by `seen_store` and `dedup_key`.
 
+### Notion DB → Web fetch → 要約 → Slack 通知
+
+Notion データベースの URL プロパティを起点に Web ページを取得・要約し、Slack に
+通知する王道パイプライン. `NotionDatabaseSource(url_property=...)` を指定すると
+`item.payload` が URL 文字列になり `WebPageExtractor` とそのまま接続できる
+(元の Notion page object は `item.metadata["page"]` から参照可能):
+
+```python
+from digestkit import Digester
+from digestkit.sources.notion_database import NotionDatabaseSource
+from digestkit.extractors.webpage import WebPageExtractor
+from digestkit.summarizers import LLMSummarizer
+from digestkit.sinks.slack import SlackSink
+
+digester = Digester(
+    source=NotionDatabaseSource(
+        database_id="<your-db-id>",
+        url_property="URL",                 # ← payload を URL 文字列にするモード
+        status_property="Status",
+        status_value_success="処理済み",
+        query_filter={"property": "Status", "select": {"equals": "未読"}},
+    ),
+    extractor=WebPageExtractor(),
+    summarizer=LLMSummarizer(provider="anthropic", model="claude-haiku-4-5"),
+    sink=SlackSink(webhook_url="https://hooks.slack.com/..."),
+)
+digester.run()
+```
+
 ## Long documents (chunked / map-reduce)
 
 For documents that exceed a model's context window (long PDFs, book chapters), use

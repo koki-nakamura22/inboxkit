@@ -2,15 +2,38 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from notion_client import Client
 
 from ..digester import ConfigurationError
-from ..types import Digest, Item
+from ..types import Digest, DigestkitError, Item
 
 if TYPE_CHECKING:
     from ..digester import FailureInfo
+
+
+def _extract_url_from_property(page: dict[str, Any], property_name: str) -> str:
+    """Notion page object から指定プロパティの URL 文字列を取り出す.
+
+    対応プロパティ型: ``url`` (Notion の組み込み URL 型). 値が未設定 (None) の場合や
+    プロパティ自体が存在しない場合は ``DigestkitError`` を送出する.
+    """
+    properties = cast("dict[str, Any]", page.get("properties") or {})
+    prop = properties.get(property_name)
+    if prop is None:
+        raise DigestkitError(
+            f"NotionDatabaseSource: page {page.get('id')!r} に URL プロパティ "
+            f"{property_name!r} が存在しません"
+        )
+    prop_dict = cast("dict[str, Any]", prop) if isinstance(prop, dict) else None
+    url_value: Any = prop_dict.get("url") if prop_dict is not None else None
+    if not url_value:
+        raise DigestkitError(
+            f"NotionDatabaseSource: page {page.get('id')!r} の URL プロパティ "
+            f"{property_name!r} が空です"
+        )
+    return str(url_value)
 
 
 class NotionDatabaseSource:
@@ -24,6 +47,13 @@ class NotionDatabaseSource:
       ``status_property`` と ``status_value_success`` (または ``status_value_failure``)
       は **どちらも揃って指定** する必要がある. 片方のみ指定すると
       ``ConfigurationError`` で早期失敗する (silent no-op を避けるため).
+
+    URL モード (Issue #35):
+      ``url_property`` を指定すると、各ページの該当 URL プロパティを取り出し
+      ``Item(payload=url_string, metadata={"page": page_obj})`` を yield する.
+      これにより ``WebPageExtractor`` とそのまま接続できる. callback などで元の
+      Notion page object 全体を参照したい場合は ``item.metadata["page"]`` から取得する.
+      未指定の場合は従来通り ``Item(payload=page_obj)`` を返す (後方互換).
 
     callback による上書き:
       ``properties_on_success`` / ``properties_on_failure`` が ``status_property`` と
@@ -43,6 +73,7 @@ class NotionDatabaseSource:
         properties_on_success: Callable[[Item, Digest], dict[str, Any]] | None = None,
         properties_on_failure: Callable[[FailureInfo], dict[str, Any]] | None = None,
         query_filter: dict[str, Any] | None = None,
+        url_property: str | None = None,
     ) -> None:
         self._database_id = database_id
         resolved = token or os.environ.get("NOTION_TOKEN")
@@ -74,6 +105,7 @@ class NotionDatabaseSource:
         self._properties_on_success = properties_on_success
         self._properties_on_failure = properties_on_failure
         self._query_filter = query_filter
+        self._url_property = url_property
         self._client: Client | None = None
 
     def _get_client(self) -> Client:
@@ -96,7 +128,11 @@ class NotionDatabaseSource:
                 body=body,
             )
             for page in response["results"]:
-                yield Item(id=page["id"], payload=page)
+                if self._url_property is not None:
+                    url = _extract_url_from_property(page, self._url_property)
+                    yield Item(id=page["id"], payload=url, metadata={"page": page})
+                else:
+                    yield Item(id=page["id"], payload=page)
             cursor = response.get("next_cursor")
             if not cursor:
                 break

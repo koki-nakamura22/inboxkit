@@ -680,6 +680,50 @@ def test_sink_write_failure_still_routes_to_ack_failure_with_stage_write() -> No
     assert store.has("1")
 
 
+def test_seen_store_add_failure_after_run_mode_still_acks_success() -> None:
+    """Issue #32: ack_mode='after_run' でも seen_store.add 失敗は ack_failure に
+    降格させない. defer されたバッファに ack_success として積まれ、run 完走後に
+    一括発行される.
+
+    per_item テストと同じ挙動が defer 経路でも保たれることを保証する
+    リグレッションガード.
+    """
+    items = _make_items(3)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+    store = _FlakySeenStore(fail_on={"1"})
+
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=store,
+        ack_mode="after_run",
+    )
+
+    result = d.run()
+
+    # success は 3 件 (seen_store.add 失敗は success カウントを巻き戻さない)
+    assert result.success == 3
+    assert result.failures == []
+    # after_run の契約通り: 全 write 完了後に ack_success がまとめて発行され、
+    # "1" は ack_failure ではなく ack_success として積まれている
+    assert log == [
+        ("write", "0"),
+        ("write", "1"),
+        ("write", "2"),
+        ("ack_success", "0"),
+        ("ack_success", "1"),
+        ("ack_success", "2"),
+    ]
+    # 成功した add の分だけ seen_store に積まれる
+    assert store.has("0")
+    assert not store.has("1")
+    assert store.has("2")
+
+
 # ---------------------------------------------------------------------------
 # Issue #27: AckSource per_item ack
 # ---------------------------------------------------------------------------

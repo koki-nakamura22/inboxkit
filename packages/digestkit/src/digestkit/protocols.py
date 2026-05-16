@@ -22,6 +22,14 @@ class AckSource(Protocol):
 
     Issue #27. Source Protocol との継承関係を持たせると Protocol の structural
     subtyping で誤検知しやすいため、明示的に fetch も含めた独立 Protocol として宣言する.
+
+    ack は per_item の "完了サイクル" にのみ対応する:
+      - ``dry_run=True``: sink.write をスキップするため ack も呼ばない.
+      - seen_store ヒット (= 過去に処理済み判定): Source 側は前回 run で既に
+        ack 済みのはずで、呼び直さない.
+      - dedup_key 計算失敗: ``stage='extract'`` として ack_failure を呼ぶ.
+
+    全 item 処理後の一括 ack (after_run モード) は Issue #28 で別途扱う.
     """
 
     def fetch(self) -> Iterable[Item]: ...

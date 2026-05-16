@@ -722,6 +722,67 @@ def test_run_does_not_call_ack_on_plain_source() -> None:
     assert len(result.failures) == 1
 
 
+def test_run_calls_ack_failure_on_dedup_key_failure() -> None:
+    """dedup_key 計算失敗時は stage='extract' で ack_failure が呼ばれる."""
+    items = _make_items(1)
+    src = _SpyAckSource(items)
+
+    def bad_key(item: Item) -> str:
+        raise ValueError(f"boom: {item.id}")
+
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(),
+        seen_store=_FakeSeenStore(),
+        dedup_key=bad_key,
+    )
+
+    d.run()
+
+    assert src.calls == [("failure", "0")]
+    assert src.failure_args[0].stage == "extract"
+    assert isinstance(src.failure_args[0].error, ValueError)
+
+
+def test_run_does_not_call_ack_on_dry_run() -> None:
+    """dry_run=True は sink.write をスキップするため ack も呼ばれない."""
+    items = _make_items(3)
+    src = _SpyAckSource(items)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(),
+        seen_store=None,
+    )
+
+    d.run(dry_run=True)
+
+    assert src.calls == []
+
+
+def test_run_does_not_call_ack_on_seen_store_hit() -> None:
+    """seen_store ヒット時は Source 側で過去 run に ack 済みのはずなので呼び直さない."""
+    items = _make_items(3)
+    src = _SpyAckSource(items)
+    # item "1" は処理済み扱い
+    store = _FakeSeenStore(seen={"1"})
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(),
+        seen_store=store,
+    )
+
+    d.run()
+
+    # "1" は skip され ack は呼ばれず、"0" / "2" のみ ack_success が来る
+    assert src.calls == [("success", "0"), ("success", "2")]
+
+
 def test_ack_source_exported_from_public_api() -> None:
     """AckSource は digestkit パッケージから直接 import できる."""
     from digestkit import AckSource as PublicAckSource

@@ -98,6 +98,36 @@ def test_sinks_lazy_loads_slack_on_access() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_sinks_does_not_eager_import_notion_page() -> None:
+    """eager import される Sink を取っても notion_page は読まれない."""
+    result = _run(
+        """
+        import sys
+        from digestkit.sinks import EmailSink, SQLiteSink, CompositeSink  # noqa: F401
+
+        assert "digestkit.sinks.notion_page" not in sys.modules, (
+            "notion_page should be lazy-loaded; got eager import"
+        )
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_sinks_lazy_loads_notion_page_on_access() -> None:
+    result = _run(
+        """
+        import sys
+        import digestkit.sinks
+
+        assert "digestkit.sinks.notion_page" not in sys.modules
+        cls = digestkit.sinks.NotionPageSink
+        assert cls is not None
+        assert "digestkit.sinks.notion_page" in sys.modules
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_sinks_unknown_attribute_raises() -> None:
     import pytest
 

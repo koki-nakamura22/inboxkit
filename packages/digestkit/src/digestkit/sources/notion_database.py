@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from notion_client import Client
 
+from .._notion_retry import with_retry
 from ..digester import ConfigurationError
 from ..types import Digest, DigestkitError, Item
 
@@ -55,6 +56,12 @@ class NotionDatabaseSource:
       Notion page object 全体を参照したい場合は ``item.metadata["page"]`` から取得する.
       未指定の場合は従来通り ``Item(payload=page_obj)`` を返す (後方互換).
 
+    429 リトライ (Issue #42):
+      ``max_retries`` (default: 3) / ``initial_backoff_sec`` (default: 1.0) で
+      Notion API の 429 rate-limit に対する自動再試行を制御する. ``Retry-After``
+      ヘッダがあればその秒数を尊重し、無ければ ``initial_backoff_sec * 2 ** attempt``
+      の指数バックオフで sleep する. 429 以外のエラーは即時 raise する.
+
     callback による上書き:
       ``properties_on_success`` / ``properties_on_failure`` が ``status_property`` と
       同じキーを返した場合、標準の Status 書き戻し値は **callback の値で上書き** される
@@ -74,6 +81,8 @@ class NotionDatabaseSource:
         properties_on_failure: Callable[[FailureInfo], dict[str, Any]] | None = None,
         query_filter: dict[str, Any] | None = None,
         url_property: str | None = None,
+        max_retries: int = 3,
+        initial_backoff_sec: float = 1.0,
     ) -> None:
         self._database_id = database_id
         resolved = token or os.environ.get("NOTION_TOKEN")
@@ -106,6 +115,12 @@ class NotionDatabaseSource:
         self._properties_on_failure = properties_on_failure
         self._query_filter = query_filter
         self._url_property = url_property
+        if max_retries < 0:
+            raise ConfigurationError("NotionDatabaseSource: max_retries must be >= 0")
+        if initial_backoff_sec < 0:
+            raise ConfigurationError("NotionDatabaseSource: initial_backoff_sec must be >= 0")
+        self._max_retries = max_retries
+        self._initial_backoff_sec = initial_backoff_sec
         self._client: Client | None = None
         # Issue #41: Notion 3.x Data Sources API 解決結果のキャッシュ.
         # ``_data_source_resolved`` は「解決済みか」を示すフラグで、
@@ -119,6 +134,13 @@ class NotionDatabaseSource:
             self._client = Client(auth=self._token)
         return self._client
 
+    def _call(self, func: Callable[[], Any]) -> Any:
+        return with_retry(
+            func,
+            max_retries=self._max_retries,
+            initial_backoff_sec=self._initial_backoff_sec,
+        )
+
     def _resolve_data_source_id(self) -> str | None:
         """Notion 3.x の data source ID を解決する (初回のみ API 呼び出し、以降キャッシュ).
 
@@ -130,9 +152,11 @@ class NotionDatabaseSource:
         if self._data_source_resolved:
             return self._data_source_id
         client = self._get_client()
-        retrieved: Any = client.request(
-            path=f"databases/{self._database_id}",
-            method="GET",
+        retrieved: Any = self._call(
+            lambda: client.request(
+                path=f"databases/{self._database_id}",
+                method="GET",
+            )
         )
         if isinstance(retrieved, dict):
             data_sources: Any = cast("dict[str, Any]", retrieved).get("data_sources")
@@ -177,10 +201,12 @@ class NotionDatabaseSource:
                 body["start_cursor"] = cursor
             if self._query_filter is not None:
                 body["filter"] = self._query_filter
-            response: Any = client.request(
-                path=query_path,
-                method="POST",
-                body=body,
+            response: Any = self._call(
+                lambda body=body: client.request(
+                    path=query_path,
+                    method="POST",
+                    body=body,
+                )
             )
             for page in response["results"]:
                 if self._url_property is not None:
@@ -201,7 +227,8 @@ class NotionDatabaseSource:
         if self._properties_on_success:
             properties.update(self._properties_on_success(item, digest))
         if properties:
-            self._get_client().pages.update(page_id=item.id, properties=properties)
+            client = self._get_client()
+            self._call(lambda: client.pages.update(page_id=item.id, properties=properties))
 
     def ack_failure(self, failure: FailureInfo) -> None:
         properties: dict[str, Any] = {}
@@ -212,4 +239,5 @@ class NotionDatabaseSource:
         if self._properties_on_failure:
             properties.update(self._properties_on_failure(failure))
         if properties:
-            self._get_client().pages.update(page_id=failure.item.id, properties=properties)
+            client = self._get_client()
+            self._call(lambda: client.pages.update(page_id=failure.item.id, properties=properties))

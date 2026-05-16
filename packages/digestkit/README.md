@@ -122,6 +122,12 @@ digester = Digester(
 digester.run()
 ```
 
+`NotionDatabaseSource` は Notion 3.x の Data Sources API (`data_sources/{id}/query`)
+に**自動対応**する. 初回 `fetch()` で `databases.retrieve` を 1 回呼び `data_sources`
+の有無を判定し、結果はインスタンス内にキャッシュする (2 回目以降の retrieve 呼び出しは
+発生しない). 3.x で新規作成された DB は新 API、旧 DB は旧 `databases/{id}/query` へ
+透過的に fallback されるため、利用者側で API バージョンを意識する必要はない.
+
 ## Long documents (chunked / map-reduce)
 
 For documents that exceed a model's context window (long PDFs, book chapters), use

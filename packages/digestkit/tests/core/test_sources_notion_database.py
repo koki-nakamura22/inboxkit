@@ -27,13 +27,41 @@ def _load(name: str) -> dict[str, object]:
     return json.loads((_FIXTURES / name).read_text())  # type: ignore[no-any-return]
 
 
+def _setup_request(
+    mock_client: MagicMock,
+    query_responses: list[dict[str, Any]] | dict[str, Any],
+    *,
+    data_sources: list[dict[str, Any]] | None = None,
+) -> None:
+    """mock_client.request を dispatch する補助 (Issue #41).
+
+    - GET ``databases/{id}`` → ``{"data_sources": data_sources or []}`` (旧 API 互換は空)
+    - POST query → ``query_responses`` を順次返す
+    """
+    retrieve_resp = {"data_sources": list(data_sources) if data_sources else []}
+    queries = query_responses if isinstance(query_responses, list) else [query_responses]
+    query_iter = iter(queries)
+
+    def side_effect(*, path: str, method: str, body: Any = None) -> Any:
+        if method == "GET":
+            return retrieve_resp
+        return next(query_iter)
+
+    mock_client.request.side_effect = side_effect
+
+
+def _post_calls(mock_client: MagicMock) -> list[Any]:
+    """mock_client.request のうち POST (query) 呼び出しのみ抽出する."""
+    return [c for c in mock_client.request.call_args_list if c.kwargs.get("method") == "POST"]
+
+
 def test_notion_database_source_fetches_first_page() -> None:
     """AC-008: 1 ページ目のレスポンスから Item を yield."""
     # Arrange
     page1 = _load("database_query_page1.json")
     single_page = {**page1, "next_cursor": None, "has_more": False}
     mock_client = MagicMock()
-    mock_client.request.return_value = single_page
+    _setup_request(mock_client, single_page)
 
     # Act
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
@@ -53,7 +81,7 @@ def test_notion_database_source_follows_next_cursor_for_pagination() -> None:
     page1 = _load("database_query_page1.json")
     page2 = _load("database_query_page2.json")
     mock_client = MagicMock()
-    mock_client.request.side_effect = [page1, page2]
+    _setup_request(mock_client, [page1, page2])
 
     # Act
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
@@ -64,8 +92,8 @@ def test_notion_database_source_follows_next_cursor_for_pagination() -> None:
     assert len(items) == 3
     assert items[0].id == "00000000-0000-0000-0000-000000000001"
     assert items[2].id == "00000000-0000-0000-0000-000000000003"
-    second_call_kwargs = mock_client.request.call_args_list[1].kwargs
-    assert second_call_kwargs["body"]["start_cursor"] == "cursor-page-2"
+    second_query_kwargs = _post_calls(mock_client)[1].kwargs
+    assert second_query_kwargs["body"]["start_cursor"] == "cursor-page-2"
 
 
 def test_notion_database_source_stops_when_next_cursor_is_null() -> None:
@@ -74,7 +102,7 @@ def test_notion_database_source_stops_when_next_cursor_is_null() -> None:
     page1 = _load("database_query_page1.json")
     page2 = _load("database_query_page2.json")
     mock_client = MagicMock()
-    mock_client.request.side_effect = [page1, page2]
+    _setup_request(mock_client, [page1, page2])
 
     # Act
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
@@ -82,7 +110,7 @@ def test_notion_database_source_stops_when_next_cursor_is_null() -> None:
         items = list(source.fetch())
 
     # Assert — next_cursor=null の page2 で停止し 3 回目は呼ばれない
-    assert mock_client.request.call_count == 2
+    assert len(_post_calls(mock_client)) == 2
     assert len(items) == 3
 
 
@@ -104,7 +132,7 @@ def test_notion_database_source_yields_empty_when_results_is_empty() -> None:
         "has_more": False,
     }
     mock_client = MagicMock()
-    mock_client.request.return_value = empty_response
+    _setup_request(mock_client, empty_response)
 
     # Act
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
@@ -121,7 +149,7 @@ def test_notion_database_source_uses_env_token() -> None:
     page1 = _load("database_query_page1.json")
     single_page = {**page1, "next_cursor": None, "has_more": False}
     mock_client = MagicMock()
-    mock_client.request.return_value = single_page
+    _setup_request(mock_client, single_page)
 
     # Act
     with (
@@ -153,7 +181,7 @@ def test_notion_database_source_query_filter_is_passed_to_request() -> None:
     """query_filter 指定時、body に filter が含まれる."""
     # Arrange
     mock_client = MagicMock()
-    mock_client.request.return_value = {"results": [], "next_cursor": None}
+    _setup_request(mock_client, {"results": [], "next_cursor": None})
     query_filter = {"property": "Status", "select": {"equals": "未読"}}
 
     # Act
@@ -162,18 +190,18 @@ def test_notion_database_source_query_filter_is_passed_to_request() -> None:
         list(source.fetch())
 
     # Assert
-    body = mock_client.request.call_args.kwargs["body"]
+    body = _post_calls(mock_client)[0].kwargs["body"]
     assert body["filter"] == query_filter
 
 
 def test_notion_database_source_query_filter_omitted_when_unset() -> None:
     """query_filter 未指定時、body に filter キーは付かない (既存挙動)."""
     mock_client = MagicMock()
-    mock_client.request.return_value = {"results": [], "next_cursor": None}
+    _setup_request(mock_client, {"results": [], "next_cursor": None})
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(database_id="db-id", token="t")
         list(source.fetch())
-    body = mock_client.request.call_args.kwargs["body"]
+    body = _post_calls(mock_client)[0].kwargs["body"]
     assert "filter" not in body
 
 
@@ -378,7 +406,7 @@ def test_fetch_with_url_property_yields_url_string_payload() -> None:
     page1 = _load("database_query_page1.json")
     single_page = {**page1, "next_cursor": None, "has_more": False}
     mock_client = MagicMock()
-    mock_client.request.return_value = single_page
+    _setup_request(mock_client, single_page)
 
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(database_id="db-id", token="t", url_property="URL")
@@ -397,7 +425,7 @@ def test_fetch_without_url_property_keeps_legacy_payload_shape() -> None:
     page1 = _load("database_query_page1.json")
     single_page = {**page1, "next_cursor": None, "has_more": False}
     mock_client = MagicMock()
-    mock_client.request.return_value = single_page
+    _setup_request(mock_client, single_page)
 
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(database_id="db-id", token="t")
@@ -424,7 +452,7 @@ def test_fetch_with_url_property_raises_when_property_missing() -> None:
         "has_more": False,
     }
     mock_client = MagicMock()
-    mock_client.request.return_value = response
+    _setup_request(mock_client, response)
 
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(database_id="db-id", token="t", url_property="URL")
@@ -447,7 +475,7 @@ def test_fetch_with_url_property_raises_when_url_value_is_null() -> None:
         "has_more": False,
     }
     mock_client = MagicMock()
-    mock_client.request.return_value = response
+    _setup_request(mock_client, response)
 
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(database_id="db-id", token="t", url_property="URL")
@@ -466,7 +494,7 @@ def test_ack_success_callback_can_access_original_page_via_metadata() -> None:
 
     page1 = _load("database_query_page1.json")
     single_page = {**page1, "next_cursor": None, "has_more": False}
-    mock_client.request.return_value = single_page
+    _setup_request(mock_client, single_page)
 
     with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(
@@ -480,3 +508,124 @@ def test_ack_success_callback_can_access_original_page_via_metadata() -> None:
 
     called_props = mock_client.pages.update.call_args.kwargs["properties"]
     assert called_props["Title"]["rich_text"][0]["text"]["content"] == "Article 1 (page 1)"
+
+
+# Issue #41: Notion 3.x Data Sources API 対応 ----------------------------------
+
+
+def test_fetch_uses_data_sources_api_when_database_has_data_sources() -> None:
+    """data_sources が非空なら ``data_sources/{id}/query`` を叩く (新 API パス)."""
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    _setup_request(
+        mock_client,
+        single_page,
+        data_sources=[{"id": "ds-abc", "name": "default"}],
+    )
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        items = list(source.fetch())
+
+    assert len(items) == 2
+    posts = _post_calls(mock_client)
+    assert posts[0].kwargs["path"] == "data_sources/ds-abc/query"
+
+
+def test_fetch_falls_back_to_legacy_api_when_data_sources_is_empty() -> None:
+    """data_sources が空なら旧 ``databases/{id}/query`` へ fallback (透過的)."""
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    _setup_request(mock_client, single_page, data_sources=[])
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        items = list(source.fetch())
+
+    assert len(items) == 2
+    posts = _post_calls(mock_client)
+    assert posts[0].kwargs["path"] == "databases/db-id/query"
+
+
+def test_data_source_id_is_cached_across_multiple_fetch_calls() -> None:
+    """``databases.retrieve`` は初回のみ呼ばれ、2 回目以降は呼ばれない (キャッシュ)."""
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+
+    retrieve_calls = 0
+
+    def side_effect(*, path: str, method: str, body: Any = None) -> Any:
+        nonlocal retrieve_calls
+        if method == "GET":
+            retrieve_calls += 1
+            return {"data_sources": [{"id": "ds-xyz"}]}
+        return single_page
+
+    mock_client.request.side_effect = side_effect
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        list(source.fetch())
+        list(source.fetch())
+
+    assert retrieve_calls == 1
+    # 2 回 fetch したので POST query は 2 回、いずれも新 API パス
+    posts = _post_calls(mock_client)
+    assert len(posts) == 2
+    assert all(c.kwargs["path"] == "data_sources/ds-xyz/query" for c in posts)
+
+
+def test_fetch_raises_when_data_sources_is_not_a_list() -> None:
+    """``data_sources`` が list でないレスポンスは ``DigestkitError``."""
+    mock_client = MagicMock()
+
+    def side_effect(*, path: str, method: str, body: Any = None) -> Any:
+        if method == "GET":
+            return {"data_sources": "not-a-list"}
+        return {"results": [], "next_cursor": None}
+
+    mock_client.request.side_effect = side_effect
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        with pytest.raises(DigestkitError, match="data_sources"):
+            list(source.fetch())
+
+
+def test_fetch_raises_when_data_sources_first_entry_has_no_string_id() -> None:
+    """``data_sources[0].id`` が文字列でない場合は ``DigestkitError``."""
+    mock_client = MagicMock()
+
+    def side_effect(*, path: str, method: str, body: Any = None) -> Any:
+        if method == "GET":
+            return {"data_sources": [{"id": 12345}]}
+        return {"results": [], "next_cursor": None}
+
+    mock_client.request.side_effect = side_effect
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        with pytest.raises(DigestkitError, match="id"):
+            list(source.fetch())
+
+
+def test_fetch_uses_first_data_source_when_multiple_exist() -> None:
+    """複数 data_sources がある場合、先頭の ID を採用する."""
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    _setup_request(
+        mock_client,
+        single_page,
+        data_sources=[{"id": "ds-first"}, {"id": "ds-second"}],
+    )
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        list(source.fetch())
+
+    posts = _post_calls(mock_client)
+    assert posts[0].kwargs["path"] == "data_sources/ds-first/query"

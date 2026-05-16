@@ -1,67 +1,69 @@
+**English** | [日本語](CONTRIBUTING.ja.md)
+
 # Contributing to inboxkit
 
 ## Development setup
 
-本リポジトリは [uv](https://docs.astral.sh/uv/) workspace + Python 3.11 以上で開発します。
+This repository is developed with [uv](https://docs.astral.sh/uv/) workspaces on Python 3.11+.
 
-### 1. 依存セットアップ
+### 1. Install dependencies
 
 ```bash
 uv sync --all-packages --all-extras
 ```
 
-### 2. pre-commit hook の有効化 (初回 1 回のみ)
+### 2. Enable the pre-commit hook (one-time setup)
 
-ローカル `git commit` 時に CI lint / typecheck と同等のチェックを自動実行します。
+Runs the same lint / typecheck checks as CI on every local `git commit`.
 
 ```bash
 make install-hooks
 ```
 
-これは以下と等価です:
+Which is equivalent to:
 
 ```bash
 uv tool install pre-commit
 uv tool run pre-commit install
 ```
 
-これで以降の `git commit` では `.pre-commit-config.yaml` のフックが走り、以下が
-強制されます:
+From here on, `git commit` triggers the hooks defined in `.pre-commit-config.yaml`,
+enforcing:
 
 - `make lint`         (= `uv run ruff check packages/`)
 - `make format-check` (= `uv run ruff format --check packages/`)
 - `make typecheck`    (= `uv run pyright packages/`)
 
-すべて CI (`.github/workflows/ci.yml`) と同じ Makefile ターゲットを呼ぶため、
-ローカルで通れば CI でも通ります。
+All of these invoke the same Makefile targets as CI (`.github/workflows/ci.yml`),
+so if it passes locally it passes in CI.
 
-### 3. 失敗した時
+### 3. When a hook fails
 
-- **ruff format --check が失敗**: `make format` で自動整形してから再 commit
-- **ruff check が失敗**: メッセージに従って修正、または `uv run ruff check --fix packages/`
-- **pyright が失敗**: 型を直す。緊急で逃したい時のみ `# pyright: ignore[<rule>]` を限定的に
+- **`ruff format --check` failed**: run `make format` to auto-format, then re-commit.
+- **`ruff check` failed**: follow the message, or run `uv run ruff check --fix packages/`.
+- **`pyright` failed**: fix the types. Only as a last resort, scope a `# pyright: ignore[<rule>]` to the specific line.
 
 ### 4. Escape hatch
 
-`pre-commit` の介入を一時的に逃したい場合 (WIP commit を積みたい等):
+If you need to bypass `pre-commit` temporarily (e.g. to stash a WIP commit):
 
 ```bash
 git commit --no-verify
 ```
 
-ただし最終 commit / push 前には必ず `make check` を通してください。`--no-verify`
-で逃したまま push しても CI で同じ内容が落ちます。
+You must still run `make check` before the final commit / push. Skipping with
+`--no-verify` and pushing will only push the same failure into CI.
 
-## よく使うターゲット
+## Common Make targets
 
 ```bash
-make help          # 一覧
-make check         # lint + format-check + typecheck (= CI lint/typecheck と同等)
-make format        # ruff format で自動整形
-make test          # pytest (demonstration / needs_network 除外)
+make help          # list available targets
+make check         # lint + format-check + typecheck (same as CI lint/typecheck)
+make format        # auto-format with ruff
+make test          # pytest (excluding demonstration / needs_network)
 ```
 
-## 関連 Issue / PR
+## Related issues / PRs
 
-- pre-commit 導入の経緯: [Issue #15](https://github.com/koki-nakamura22/inboxkit/issues/15)
-- 発端となった整形漏れ: [PR #14](https://github.com/koki-nakamura22/inboxkit/pull/14)
+- Background for adopting pre-commit: [Issue #15](https://github.com/koki-nakamura22/inboxkit/issues/15)
+- The formatting miss that triggered it: [PR #14](https://github.com/koki-nakamura22/inboxkit/pull/14)

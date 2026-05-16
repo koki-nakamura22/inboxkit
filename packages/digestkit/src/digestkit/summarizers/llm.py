@@ -36,6 +36,41 @@ class LLMSummarizer:
     :pyattr:`LLMSummarizer.DEFAULT_PROMPTS` で公開しており、利用者は
     ``LLMSummarizer(provider=..., model=..., prompts=LLMSummarizer.DEFAULT_PROMPTS)``
     の 1 行で length 機能を有効化できる。
+
+    ``system_prompt`` は ``str`` のほか、LiteLLM が受け付ける content block の
+    リスト (``list[dict[str, Any]]``) でも指定できる。これにより Anthropic の
+    prompt caching (``cache_control: {"type": "ephemeral"}``) を活用できる::
+
+        LLMSummarizer(
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            system_prompt=[
+                {
+                    "type": "text",
+                    "text": "<長い system prompt>",
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
+        )
+
+    block 構造を意識せず system prompt 全体をキャッシュしたいだけの場合は
+    ``system_prompt_cache=True`` を指定するだけでよい。``str`` で渡した
+    system prompt を内部で ``ephemeral`` cache_control 付きの単一 block に
+    自動変換する::
+
+        LLMSummarizer(
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            system_prompt="<長い system prompt>",
+            system_prompt_cache=True,
+        )
+
+    ``system_prompt_cache=True`` と ``system_prompt`` の list 指定は同時に
+    使えない (block ごとの ``cache_control`` 制御権が衝突するため、list 指定時は
+    利用者側で明示的に ``cache_control`` を載せる方針)。
+
+    詳細は LiteLLM の Anthropic prompt caching ドキュメントを参照:
+    https://docs.litellm.ai/docs/providers/anthropic#prompt-caching
     """
 
     #: 人間向け要約の標準的な 3 段階プロンプト.
@@ -59,16 +94,22 @@ class LLMSummarizer:
         self,
         provider: str,
         model: str,
-        system_prompt: str = "",
+        system_prompt: str | list[dict[str, Any]] = "",
         user_prompt_template: str | None = None,
         *,
         prompts: dict[str, str] | None = None,
         default_length: str = "standard",
         timeout: float | None = None,
         num_retries: int = 0,
+        system_prompt_cache: bool = False,
     ) -> None:
         if num_retries < 0:
             raise ValueError("num_retries は 0 以上の整数である必要があります")
+        if system_prompt_cache and not isinstance(system_prompt, str):
+            raise ValueError(
+                "system_prompt_cache=True は system_prompt が str の場合にのみ指定できます。"
+                "list[dict] を渡す場合は各 block に cache_control を直接指定してください"
+            )
         if user_prompt_template is not None and prompts is not None:
             raise ValueError(
                 "user_prompt_template と prompts は同時に指定できません。"
@@ -85,7 +126,18 @@ class LLMSummarizer:
 
         self._provider = provider
         self._model = model
-        self._system_prompt = system_prompt
+        # system_prompt_cache=True かつ str が渡された場合は ephemeral cache_control を自動付与.
+        # list[dict] が渡された場合は利用者が block 単位で cache_control を制御するため何もしない.
+        if system_prompt_cache and isinstance(system_prompt, str) and system_prompt:
+            self._system_prompt: str | list[dict[str, Any]] = [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ]
+        else:
+            self._system_prompt = system_prompt
         # 旧 API 互換: どちらも未指定なら "{text}" 単発モード.
         self._user_prompt_template: str | None = (
             user_prompt_template if user_prompt_template is not None or prompts is None else None
@@ -121,7 +173,7 @@ class LLMSummarizer:
         full_model = f"{self._provider}/{self._model}" if "/" not in self._model else self._model
         template = self._resolve_template(length)
         user_prompt = template.format(text=text, item=item)
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         if self._system_prompt:
             messages.append({"role": "system", "content": self._system_prompt})
         messages.append({"role": "user", "content": user_prompt})

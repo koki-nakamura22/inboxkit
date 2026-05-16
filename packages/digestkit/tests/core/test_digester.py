@@ -788,3 +788,293 @@ def test_ack_source_exported_from_public_api() -> None:
     from digestkit import AckSource as PublicAckSource
 
     assert PublicAckSource is AckSource
+
+
+# ---------------------------------------------------------------------------
+# Issue #28: ack_mode = per_item | after_run
+# ---------------------------------------------------------------------------
+
+
+class _OrderTrackingSink:
+    """ack 呼び出しタイミング検証用 Sink. 共有 log に write イベントを追記."""
+
+    def __init__(self, log: list[tuple[str, str]], fail_on: set[str] | None = None) -> None:
+        self._log = log
+        self._fail_on = fail_on or set()
+
+    def write(self, digest: Digest, item: Item) -> None:
+        self._log.append(("write", item.id))
+        if item.id in self._fail_on:
+            raise RuntimeError(f"write failed: {item.id}")
+
+
+class _OrderTrackingAckSource:
+    """ack 呼び出しタイミング検証用 AckSource. 共有 log に ack イベントを追記."""
+
+    def __init__(
+        self,
+        items: list[Item],
+        log: list[tuple[str, str]],
+        *,
+        fail_ack_on: set[str] | None = None,
+    ) -> None:
+        self._items = items
+        self._log = log
+        self._fail_ack_on = fail_ack_on or set()
+
+    def fetch(self) -> Iterable[Item]:
+        return iter(self._items)
+
+    def ack_success(self, item: Item, digest: Digest) -> None:
+        self._log.append(("ack_success", item.id))
+        if item.id in self._fail_ack_on:
+            raise RuntimeError(f"ack_success boom: {item.id}")
+
+    def ack_failure(self, failure: FailureInfo) -> None:
+        self._log.append(("ack_failure", failure.item.id))
+        if failure.item.id in self._fail_ack_on:
+            raise RuntimeError(f"ack_failure boom: {failure.item.id}")
+
+
+def test_ack_mode_default_is_per_item() -> None:
+    """ack_mode のデフォルトは per_item (= #27 既定挙動)."""
+    d = Digester(
+        source=_StubSource([]),
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=_SpySink(),
+        seen_store=None,
+    )
+    assert d.ack_mode == "per_item"
+
+
+def test_ack_mode_per_item_acks_interleave_with_writes() -> None:
+    """per_item: 各 sink.write の直後に ack が呼ばれる (write→ack→write→ack→...)."""
+    items = _make_items(3)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="per_item",
+    )
+
+    d.run()
+
+    assert log == [
+        ("write", "0"),
+        ("ack_success", "0"),
+        ("write", "1"),
+        ("ack_success", "1"),
+        ("write", "2"),
+        ("ack_success", "2"),
+    ]
+
+
+def test_ack_mode_after_run_defers_ack_until_all_items_processed() -> None:
+    """after_run: 全 write が終わってから ack がまとめて呼ばれる."""
+    items = _make_items(3)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="after_run",
+    )
+
+    d.run()
+
+    assert log == [
+        ("write", "0"),
+        ("write", "1"),
+        ("write", "2"),
+        ("ack_success", "0"),
+        ("ack_success", "1"),
+        ("ack_success", "2"),
+    ]
+
+
+def test_ack_mode_after_run_emits_success_then_failure_batches() -> None:
+    """after_run: 成功分の ack_success → 失敗分の ack_failure の順で一括発行."""
+    items = _make_items(4)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log, fail_on={"2"})
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(fail_on={"1"}),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="after_run",
+    )
+
+    result = d.run()
+
+    # write は "0" / "2" (失敗) / "3" の順に試行される ("1" は extract で落ちる)
+    assert result.success == 2
+    assert len(result.failures) == 2
+    # まず全 write 試行が完了し、その後 success 群 → failure 群の順で ack
+    assert log == [
+        ("write", "0"),
+        ("write", "2"),
+        ("write", "3"),
+        ("ack_success", "0"),
+        ("ack_success", "3"),
+        ("ack_failure", "1"),
+        ("ack_failure", "2"),
+    ]
+
+
+def test_ack_mode_after_run_continues_when_one_ack_raises() -> None:
+    """after_run の一括 ack 中に 1 件失敗しても、残りの ack は継続発行される."""
+    items = _make_items(3)
+    log: list[tuple[str, str]] = []
+    # 中間の "1" の ack_success が raise する
+    src = _OrderTrackingAckSource(items, log, fail_ack_on={"1"})
+    sink = _OrderTrackingSink(log)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="after_run",
+    )
+
+    result = d.run()
+
+    assert result.success == 3
+    # ack_success は 3 件すべて呼ばれた ("1" の raise を捕捉して継続)
+    ack_calls = [e for e in log if e[0] == "ack_success"]
+    assert ack_calls == [("ack_success", "0"), ("ack_success", "1"), ("ack_success", "2")]
+
+
+def test_ack_mode_after_run_skips_ack_on_dry_run() -> None:
+    """after_run + dry_run=True: sink.write がスキップされるため ack もまとめて呼ばれない."""
+    items = _make_items(3)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="after_run",
+    )
+
+    d.run(dry_run=True)
+
+    assert log == []
+
+
+def test_ack_mode_after_run_skips_ack_on_seen_store_hit() -> None:
+    """after_run でも seen_store ヒット分は ack 対象に含めない (前回 run で ack 済み)."""
+    items = _make_items(3)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+    d = Digester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=_FakeSeenStore(seen={"1"}),
+        ack_mode="after_run",
+    )
+
+    d.run()
+
+    # "1" は skip され、ack_success は "0" / "2" のみ
+    assert ("ack_success", "1") not in log
+    assert [e for e in log if e[0] == "ack_success"] == [
+        ("ack_success", "0"),
+        ("ack_success", "2"),
+    ]
+
+
+def test_ack_mode_after_run_has_no_effect_on_plain_source() -> None:
+    """非 AckSource では ack_mode を指定しても挙動変化なし (例外も出ない)."""
+    items = _make_items(2)
+    plain = _StubSource(items)
+    sink = _SpySink()
+    d = Digester(
+        source=plain,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="after_run",
+    )
+
+    result = d.run()
+
+    assert result.success == 2
+    assert len(sink.calls) == 2
+
+
+def test_ack_mode_after_run_via_subclass_class_attribute() -> None:
+    """サブクラスの class 属性で ack_mode='after_run' を指定しても効く."""
+    items = _make_items(2)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+
+    class _AfterRunDigester(Digester):
+        ack_mode = "after_run"
+
+    d = _AfterRunDigester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+    )
+    d.run()
+
+    assert log == [
+        ("write", "0"),
+        ("write", "1"),
+        ("ack_success", "0"),
+        ("ack_success", "1"),
+    ]
+
+
+def test_ack_mode_kwarg_overrides_subclass_attribute() -> None:
+    """コンストラクタ kwarg の ack_mode はサブクラス class 属性より優先される."""
+    items = _make_items(2)
+    log: list[tuple[str, str]] = []
+    src = _OrderTrackingAckSource(items, log)
+    sink = _OrderTrackingSink(log)
+
+    class _AfterRunDigester(Digester):
+        ack_mode = "after_run"
+
+    # kwarg で per_item に上書き
+    d = _AfterRunDigester(
+        source=src,
+        extractor=_SpyExtractor(),
+        summarizer=_SpySummarizer(),
+        sink=sink,
+        seen_store=None,
+        ack_mode="per_item",
+    )
+    d.run()
+
+    # per_item なので write と ack が交互
+    assert log == [
+        ("write", "0"),
+        ("ack_success", "0"),
+        ("write", "1"),
+        ("ack_success", "1"),
+    ]

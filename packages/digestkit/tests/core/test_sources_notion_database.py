@@ -18,7 +18,7 @@ import pytest
 from digestkit.digester import ConfigurationError, FailureInfo
 from digestkit.protocols import AckSource
 from digestkit.sources.notion_database import NotionDatabaseSource
-from digestkit.types import Digest, Item
+from digestkit.types import Digest, DigestkitError, Item
 
 _FIXTURES = Path(__file__).parent.parent / "fixtures" / "notion"
 
@@ -368,3 +368,115 @@ def test_ack_success_callback_overrides_status_property() -> None:
         page_id="page-1",
         properties={"Status": {"status": {"name": "Done"}}},
     )
+
+
+# Issue #35: url_property モード (A + B ハイブリッド) ---------------------------
+
+
+def test_fetch_with_url_property_yields_url_string_payload() -> None:
+    """url_property 指定時、payload は URL 文字列、metadata に元 page を保持する."""
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    mock_client.request.return_value = single_page
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t", url_property="URL")
+        items = list(source.fetch())
+
+    assert len(items) == 2
+    assert items[0].payload == "https://example.com/article-1"
+    assert items[1].payload == "https://example.com/article-2"
+    # metadata 経由で元 page を参照できる
+    assert items[0].metadata is not None
+    assert items[0].metadata["page"]["id"] == "00000000-0000-0000-0000-000000000001"
+
+
+def test_fetch_without_url_property_keeps_legacy_payload_shape() -> None:
+    """url_property 未指定時は従来通り payload=page dict、metadata=None (後方互換)."""
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client = MagicMock()
+    mock_client.request.return_value = single_page
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t")
+        items = list(source.fetch())
+
+    payload: Any = items[0].payload
+    assert isinstance(payload, dict)
+    assert payload["id"] == "00000000-0000-0000-0000-000000000001"
+    assert items[0].metadata is None
+
+
+def test_fetch_with_url_property_raises_when_property_missing() -> None:
+    """url_property に指定した名前がページに存在しないと DigestkitError."""
+    response = {
+        "object": "list",
+        "results": [
+            {
+                "object": "page",
+                "id": "page-x",
+                "properties": {"Title": {"title": [{"plain_text": "x"}]}},
+            }
+        ],
+        "next_cursor": None,
+        "has_more": False,
+    }
+    mock_client = MagicMock()
+    mock_client.request.return_value = response
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t", url_property="URL")
+        with pytest.raises(DigestkitError, match="URL"):
+            list(source.fetch())
+
+
+def test_fetch_with_url_property_raises_when_url_value_is_null() -> None:
+    """url プロパティ自体は存在するが値が None の場合も DigestkitError."""
+    response = {
+        "object": "list",
+        "results": [
+            {
+                "object": "page",
+                "id": "page-y",
+                "properties": {"URL": {"url": None}},
+            }
+        ],
+        "next_cursor": None,
+        "has_more": False,
+    }
+    mock_client = MagicMock()
+    mock_client.request.return_value = response
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(database_id="db-id", token="t", url_property="URL")
+        with pytest.raises(DigestkitError, match="空"):
+            list(source.fetch())
+
+
+def test_ack_success_callback_can_access_original_page_via_metadata() -> None:
+    """url_property モードでも properties_on_success callback から元 page を参照できる."""
+    mock_client = MagicMock()
+
+    def extra(item: Item, digest: Digest) -> dict[str, Any]:
+        assert item.metadata is not None
+        title = item.metadata["page"]["properties"]["Title"]["title"][0]["plain_text"]
+        return {"Title": {"rich_text": [{"text": {"content": title}}]}}
+
+    page1 = _load("database_query_page1.json")
+    single_page = {**page1, "next_cursor": None, "has_more": False}
+    mock_client.request.return_value = single_page
+
+    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+        source = NotionDatabaseSource(
+            database_id="db-id",
+            token="t",
+            url_property="URL",
+            properties_on_success=extra,
+        )
+        items = list(source.fetch())
+        source.ack_success(items[0], _make_digest())
+
+    called_props = mock_client.pages.update.call_args.kwargs["properties"]
+    assert called_props["Title"]["rich_text"][0]["text"]["content"] == "Article 1 (page 1)"

@@ -12,6 +12,12 @@ class DigestkitError(Exception):
 class Item:
     id: str
     payload: Any  # type depends on Source (e.g. Path for LocalDirectorySource)
+    metadata: dict[str, Any] | None = None
+    """Source 由来の補助情報 (例: Notion page object 全体).
+
+    payload を Extractor が期待する型 (URL 文字列など) に揃えつつ、
+    AckSource の callback などで元データを参照する用途で使う.
+    """
 
 
 @dataclass(frozen=True)

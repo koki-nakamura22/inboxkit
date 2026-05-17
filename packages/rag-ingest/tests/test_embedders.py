@@ -38,7 +38,22 @@ def test_batch_split_calls_litellm_twice_for_100_chunks_batch_50() -> None:
     # Assert
     assert m.call_count == 2
     assert len(vectors) == 100
-    assert embedder.dim() == 1024
+
+
+def test_batch_split_dim_cached_from_first_batch() -> None:
+    # Arrange
+    chunks = [_chunk(i) for i in range(100)]
+    mock_resp = _mock_response(dim=1024, count=50)
+
+    # Act
+    with patch(_PATCH, return_value=mock_resp):
+        embedder = LLMEmbedder(provider="voyage", model="voyage-3", batch_size=50)
+        embedder.embed(chunks)
+
+    # Assert — dim is cached after embed, no extra litellm call needed
+    with patch(_PATCH) as m:
+        assert embedder.dim() == 1024
+    m.assert_not_called()
 
 
 def test_batch_split_vectors_have_correct_dimension() -> None:
@@ -249,8 +264,10 @@ def test_model_property_returns_constructor_value() -> None:
 def test_provider_and_model_are_independent_per_instance() -> None:
     a = LLMEmbedder(provider="voyage", model="voyage-3")
     b = LLMEmbedder(provider="openai", model="text-embedding-3-small")
-    assert a.provider != b.provider
-    assert a.model != b.model
+    assert a.provider == "voyage"
+    assert b.provider == "openai"
+    assert a.model == "voyage-3"
+    assert b.model == "text-embedding-3-small"
 
 
 # ── dim() caching ──────────────────────────────────────────────────────────────
@@ -330,6 +347,39 @@ def test_timeout_value_forwarded_to_litellm() -> None:
 
     # Assert
     assert m.call_args.kwargs["timeout"] == 30.0
+
+
+def test_batch_size_one_calls_litellm_once_per_chunk() -> None:
+    # Arrange: batch_size=1 is the minimum — every chunk is its own batch
+    chunks = [_chunk(i) for i in range(3)]
+
+    def side_effect(**kwargs: Any) -> Any:
+        n = len(kwargs["input"])
+        return _mock_response(dim=4, count=n)
+
+    # Act
+    with patch(_PATCH, side_effect=side_effect) as m:
+        embedder = LLMEmbedder(provider="voyage", model="voyage-3", batch_size=1)
+        vectors = embedder.embed(chunks)
+
+    # Assert
+    assert m.call_count == 3
+    assert len(vectors) == 3
+
+
+def test_embed_float_conversion_preserves_values() -> None:
+    # Arrange: mock returns known float values to verify float() conversion
+    chunks = [_chunk(0)]
+    mock_resp: dict[str, Any] = {"data": [{"embedding": [1, 2, 3]}]}  # ints in, floats out
+
+    # Act
+    with patch(_PATCH, return_value=mock_resp):
+        embedder = LLMEmbedder(provider="voyage", model="voyage-3")
+        vectors = embedder.embed(chunks)
+
+    # Assert — values are converted to float and preserved
+    assert vectors[0] == [1.0, 2.0, 3.0]
+    assert all(isinstance(v, float) for v in vectors[0])
 
 
 # ── Protocol conformance ───────────────────────────────────────────────────────

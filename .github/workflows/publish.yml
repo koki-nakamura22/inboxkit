@@ -1,32 +1,115 @@
 name: Publish
 
+# tag prefix で publish 対象パッケージを判別 (ADR-0004 §(2)):
+#   digestkit-core-v*  → packages/digestkit-core
+#   digestkit-v*       → packages/digestkit
+#   (rag-ingest-v*     → 第 2 弾 publish 時に追加、現状は登録しない)
+#
+# 各 tag push = 1 wheel build + PyPI upload。同 commit に複数 tag を打つ場合は
+# core → 上位の順に push (ADR-0004 §(3))。順序保証は (2) digestkit publish 時の
+# "Verify core dep range on PyPI" step が行う。
+
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "digestkit-core-v*"
+      - "digestkit-v*"
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-      - run: uv sync
-      - run: uv build --package digestkit
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
   publish:
-    needs: build
     runs-on: ubuntu-latest
+    # Trusted Publishing (OIDC) 用の environment。PyPI 側で同名 environment を
+    # pending publisher として登録しておく必要がある (#51 TODO 参照)。
     environment: pypi
     permissions:
-      id-token: write
+      id-token: write   # PyPI Trusted Publishing
+      contents: write   # GitHub Release 作成
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+
+      - name: Determine target package from tag prefix
+        id: pkg
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF_NAME" in
+            digestkit-core-v*)
+              echo "name=digestkit-core" >> "$GITHUB_OUTPUT"
+              echo "dir=packages/digestkit-core" >> "$GITHUB_OUTPUT"
+              echo "tag_version=${GITHUB_REF_NAME#digestkit-core-v}" >> "$GITHUB_OUTPUT"
+              ;;
+            digestkit-v*)
+              echo "name=digestkit" >> "$GITHUB_OUTPUT"
+              echo "dir=packages/digestkit" >> "$GITHUB_OUTPUT"
+              echo "tag_version=${GITHUB_REF_NAME#digestkit-v}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Unrecognized tag prefix: $GITHUB_REF_NAME (expected digestkit-core-v* or digestkit-v*)"
+              exit 1
+              ;;
+          esac
+
+      - uses: astral-sh/setup-uv@v3
+
+      - uses: actions/setup-python@v5
         with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+          python-version: "3.13"
+
+      - name: Verify tag version matches pyproject.toml version
+        # tag の "0.1.0" 部分と pyproject の version が一致しないと publish しない。
+        # 不整合の誤 publish 防止 (ADR-0004 §(2))。
+        run: |
+          set -euo pipefail
+          pyproject_version=$(python -c "import tomllib; print(tomllib.load(open('${{ steps.pkg.outputs.dir }}/pyproject.toml','rb'))['project']['version'])")
+          tag_version="${{ steps.pkg.outputs.tag_version }}"
+          if [ "$pyproject_version" != "$tag_version" ]; then
+            echo "::error::Version mismatch: tag=$tag_version pyproject=$pyproject_version"
+            exit 1
+          fi
+          echo "Version OK: $tag_version"
+
+      - name: Verify core dep range satisfiable on PyPI (digestkit only)
+        # ADR-0004 §(3) core-first 順序の自動強制。digestkit を publish する時、
+        # pyproject の "digestkit-core>=X,<Y" レンジに含まれる version が PyPI 上に
+        # 存在しない (= core を先に publish していない) 場合は fail させる。
+        if: steps.pkg.outputs.name == 'digestkit'
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --upgrade pip
+          constraint=$(python <<'PY'
+          import tomllib
+          cfg = tomllib.load(open('packages/digestkit/pyproject.toml','rb'))
+          for d in cfg['project']['dependencies']:
+              if d.replace(' ','').startswith('digestkit-core'):
+                  print(d)
+                  break
+          PY
+          )
+          echo "Checking core constraint: $constraint"
+          # PyPI 上に constraint を満たす version が 1 つでもあれば pip download は成功する。
+          python -m pip download --no-deps --dest /tmp/core-check "$constraint" 1>/dev/null
+          echo "OK: PyPI has at least one digestkit-core version satisfying $constraint"
+
+      - name: Build wheel + sdist
+        run: |
+          set -euo pipefail
+          uv build "${{ steps.pkg.outputs.dir }}" --out-dir dist
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # CHANGELOG.md の該当バージョン節を Release body に貼れるかは将来課題。
+          # 初版は最小限: タイトル + tag + assets (wheel/sdist) で十分。
+          gh release create "$GITHUB_REF_NAME" \
+            --title "${{ steps.pkg.outputs.name }} v${{ steps.pkg.outputs.tag_version }}" \
+            --notes "Published \`${{ steps.pkg.outputs.name }}\` \`${{ steps.pkg.outputs.tag_version }}\` to PyPI. See packages/${{ steps.pkg.outputs.name }}/CHANGELOG.md for changes." \
+            dist/*

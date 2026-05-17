@@ -1,6 +1,8 @@
 """AC-003 / AC-003b: FixedSizeChunker — char unit and token unit boundary conditions."""
 from __future__ import annotations
 
+import math
+
 import pytest
 import tiktoken
 
@@ -14,19 +16,12 @@ def _item(id: str = "test-item") -> Item:
 
 
 def _expected_chunk_count(total: int, chunk_size: int, overlap: int) -> int:
-    """Mirror of FixedSizeChunker._sliding_window termination logic."""
+    """Expected chunk count via brief formula: ceil((total-overlap)/(chunk_size-overlap))."""
     if total == 0:
         return 0
-    step = chunk_size - overlap
-    count = 0
-    start = 0
-    while start < total:
-        end = min(start + chunk_size, total)
-        count += 1
-        if end == total:
-            break
-        start += step
-    return count
+    if total <= chunk_size:
+        return 1
+    return math.ceil((total - overlap) / (chunk_size - overlap))
 
 
 # ── AC-003: char unit boundary ─────────────────────────────────────────────────
@@ -84,6 +79,14 @@ def test_char_unit_last_chunk_may_be_shorter_than_chunk_size() -> None:
     chunker = FixedSizeChunker(chunk_size=10, overlap=2, unit="char")
     chunks = chunker.chunk("a" * 15, _item())
     assert len(chunks[1].text) < 10
+
+
+def test_char_unit_zero_overlap_produces_contiguous_non_overlapping_chunks() -> None:
+    chunker = FixedSizeChunker(chunk_size=5, overlap=0, unit="char")
+    chunks = chunker.chunk("abcdefghij", _item())
+    assert len(chunks) == 2
+    assert chunks[0].text == "abcde"
+    assert chunks[1].text == "fghij"
 
 
 def test_char_unit_metadata_contains_source_id() -> None:

@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: grep for misplaced digestkit imports
+      - name: grep for misplaced digestkit/digestkit_core imports
         run: |
-          if rg "^from digestkit" packages/rag-ingest/src --glob '!_upstream.py'; then
-            echo "::error::Found 'from digestkit' outside _upstream.py — violates neutrality principle (SR-M-006)"
+          if rg "^from (digestkit|digestkit_core)\b" packages/rag-ingest/src --glob '!_upstream.py'; then
+            echo "::error::Found 'from digestkit' or 'from digestkit_core' outside _upstream.py — violates neutrality principle (SR-M-006)"
             exit 1
           fi
 

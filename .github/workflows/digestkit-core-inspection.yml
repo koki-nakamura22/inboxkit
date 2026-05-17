@@ -1,0 +1,47 @@
+name: digestkit-core inspection
+
+on:
+  pull_request:
+    paths: ["packages/digestkit-core/**"]
+  push:
+    branches: [main]
+    paths: ["packages/digestkit-core/**"]
+
+jobs:
+  neutrality-check:
+    name: core neutrality (no digestkit/rag_ingest reverse deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: grep for digestkit reverse imports
+        run: |
+          if rg "^from digestkit\b" packages/digestkit-core/src; then
+            echo "::error::Found 'from digestkit' in digestkit-core/src — violates neutrality principle (core must not depend on digestkit)"
+            exit 1
+          fi
+      - name: grep for rag_ingest reverse imports
+        run: |
+          if rg "^from rag_ingest\b" packages/digestkit-core/src; then
+            echo "::error::Found 'from rag_ingest' in digestkit-core/src — violates neutrality principle (core must not depend on rag-ingest)"
+            exit 1
+          fi
+
+  coverage-and-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages --all-extras
+      - name: pyright
+        run: uv run pyright packages/digestkit-core/src
+      - name: ruff
+        run: uv run ruff check packages/digestkit-core && uv run ruff format --check packages/digestkit-core
+      - name: pytest with coverage (combined digestkit-core + digestkit suites)
+        # digestkit_core のコードは digestkit の re-export チェーン経由でも実カバーされるため、
+        # 両テストスイートを通したカバレッジで判定する (ADR-0003 §「digestkit 公開 API 不変方針」
+        # と整合: canonical は core 側、digestkit のテストが core を実質駆動している)。
+        run: >-
+          uv run pytest
+          --cov=digestkit_core --cov-report=term-missing --cov-fail-under=80
+          packages/digestkit-core/tests packages/digestkit/tests
+          -m 'not demonstration and not needs_network'

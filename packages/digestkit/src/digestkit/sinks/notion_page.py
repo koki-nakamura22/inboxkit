@@ -6,7 +6,8 @@ from typing import Any
 
 from notion_client import Client
 
-from .._notion_retry import with_retry
+from digestkit_core._notion_retry import with_retry
+
 from ..digester import ConfigurationError
 from ..types import Digest, Item
 from . import SinkError

@@ -18,7 +18,7 @@ from digestkit.extractors.webpage import WebPageExtractor
 from digestkit.types import Item
 
 _FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "web"
-_PATCH_TARGET = "digestkit.extractors.webpage.httpx.get"
+_PATCH_TARGET = "digestkit_core.extractors.webpage.httpx.get"
 
 
 def _make_ok_response(html: str, content_type: str = "text/html; charset=utf-8") -> MagicMock:
@@ -100,7 +100,7 @@ def test_webpage_extractor_raises_extraction_error_when_trafilatura_returns_none
     # 本文抽出できない最小 HTML
     bare_html = "<html><body></body></html>"
 
-    _trafilatura_patch = "digestkit.extractors.webpage.trafilatura.extract"
+    _trafilatura_patch = "digestkit_core.extractors.webpage.trafilatura.extract"
 
     # Act / Assert
     with (

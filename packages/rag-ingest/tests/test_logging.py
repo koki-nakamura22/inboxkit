@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any
 from unittest.mock import patch
 
@@ -45,7 +44,7 @@ def test_embed_log_tokens_in(caplog: pytest.LogCaptureFixture) -> None:
             _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "tokens_in")]
     assert records, "expected at least one embed_completed record"
-    assert records[0].tokens_in == 100
+    assert getattr(records[0], "tokens_in") == 100
 
 
 def test_embed_log_latency_ms_non_negative(caplog: pytest.LogCaptureFixture) -> None:
@@ -54,7 +53,7 @@ def test_embed_log_latency_ms_non_negative(caplog: pytest.LogCaptureFixture) -> 
             _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "latency_ms")]
     assert records
-    assert records[0].latency_ms >= 0
+    assert getattr(records[0], "latency_ms") >= 0
 
 
 def test_embed_log_provider(caplog: pytest.LogCaptureFixture) -> None:
@@ -63,7 +62,7 @@ def test_embed_log_provider(caplog: pytest.LogCaptureFixture) -> None:
             _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "provider")]
     assert records
-    assert records[0].provider == "voyage"
+    assert getattr(records[0], "provider") == "voyage"
 
 
 def test_embed_log_model(caplog: pytest.LogCaptureFixture) -> None:
@@ -72,7 +71,7 @@ def test_embed_log_model(caplog: pytest.LogCaptureFixture) -> None:
             _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "model")]
     assert records
-    assert records[0].model == "voyage-3"
+    assert getattr(records[0], "model") == "voyage-3"
 
 
 def test_embed_log_chunk_count(caplog: pytest.LogCaptureFixture) -> None:
@@ -82,7 +81,7 @@ def test_embed_log_chunk_count(caplog: pytest.LogCaptureFixture) -> None:
     records = [r for r in caplog.records if hasattr(r, "chunk_count")]
     assert records
     # StubChunker returns 1 chunk per item
-    assert records[0].chunk_count == 1
+    assert getattr(records[0], "chunk_count") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -229,4 +228,4 @@ def test_embed_log_tokens_in_zero_when_usage_absent(caplog: pytest.LogCaptureFix
             _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "tokens_in")]
     assert records
-    assert records[0].tokens_in == 0
+    assert getattr(records[0], "tokens_in") == 0

@@ -65,7 +65,7 @@ class StubEmbedder:
 @dataclass
 class StubVectorSink:
     write_calls: list[tuple[list[Chunk], list[Vector], Item, IngestContext]] = field(
-        default_factory=list
+        default_factory=lambda: []
     )
 
     def write(

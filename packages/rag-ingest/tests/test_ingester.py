@@ -5,7 +5,6 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -16,7 +15,6 @@ from rag_ingest.chunkers.fixed_size import FixedSizeChunker
 from rag_ingest.exceptions import ConfigurationError
 from rag_ingest.ingester import Ingester, RunResult
 from rag_ingest.sinks.sqlite_vec import SQLiteVecSink
-from rag_ingest.types import Chunk, IngestContext, Vector
 
 
 class StubIngester(Ingester):
@@ -35,22 +33,13 @@ class StubIngester(Ingester):
 
 
 @dataclass
-class PreloadedSink:
-    """StubVectorSink with pre-seeded existing URIs for dedup tests."""
+class PreloadedSink(StubVectorSink):
+    """StubVectorSink with pre-seeded existing URIs for dedup tests.
 
-    write_calls: list[tuple[list[Chunk], list[Vector], Item, IngestContext]] = field(
-        default_factory=list
-    )
-    _existing: set[str] = field(default_factory=set)
+    Subclasses StubVectorSink so it satisfies StubIngester's sink type.
+    """
 
-    def write(
-        self,
-        chunks: list[Chunk],
-        vectors: list[Vector],
-        item: Item,
-        ingest_context: IngestContext,
-    ) -> None:
-        self.write_calls.append((chunks, vectors, item, ingest_context))
+    _existing: set[str] = field(default_factory=lambda: set())
 
     def existing_source_uris(self) -> set[str]:
         return set(self._existing)

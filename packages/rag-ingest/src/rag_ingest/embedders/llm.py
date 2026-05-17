@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 import litellm
 
@@ -24,7 +24,8 @@ def _extract_prompt_tokens(result: Any) -> int:
     if usage is None and hasattr(result, "usage"):
         usage = result.usage
     if isinstance(usage, dict):
-        return int(usage.get("prompt_tokens", 0) or 0)
+        prompt_tokens = cast("Any", usage).get("prompt_tokens", 0)
+        return int(prompt_tokens or 0)
     if usage is not None:
         return int(getattr(usage, "prompt_tokens", 0) or 0)
     return 0

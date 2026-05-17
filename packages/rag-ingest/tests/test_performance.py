@@ -153,7 +153,7 @@ def test_dedup_query_performance(tmp_path: Path) -> None:
             ctx,
         )
     # release the connection so the second SQLiteVecSink can acquire a write lock
-    seeder._conn.close()
+    seeder._conn.close()  # pyright: ignore[reportPrivateUsage]
 
     sink = SQLiteVecSink(db_path=db_path, dim=_DIM)
     ingester = _make_ingester(

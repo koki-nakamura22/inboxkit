@@ -95,7 +95,7 @@ def test_schema_and_sqlite_vec_loaded(tmp_path: Path) -> None:
     sink.write(make_chunks(1), make_vectors(1), make_item("file:///b.pdf"), make_ctx())
 
     # sqlite-vec is loaded on sink's connection — vec_version() must be callable
-    version = sink._conn.execute("SELECT vec_version()").fetchone()[0]
+    version = sink._conn.execute("SELECT vec_version()").fetchone()[0]  # pyright: ignore[reportPrivateUsage]
     assert version.startswith("v")
 
     conn = sqlite3.connect(str(db))

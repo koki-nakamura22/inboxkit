@@ -3,7 +3,8 @@ name = "digestkit"
 version = "0.1.0"
 description = "Personal content digester framework: fetch → extract → LLM summarize → sink"
 requires-python = ">=3.11,<3.14"
-license = { text = "MIT" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 readme = "README.md"
 authors = [{ name = "Koki Nakamura" }]
 keywords = ["llm", "summarization", "digester", "personal-content"]
@@ -12,7 +13,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "License :: OSI Approved :: MIT License",
     "Topic :: Text Processing",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",

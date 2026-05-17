@@ -76,7 +76,12 @@ jobs:
           python -m pip install --upgrade pip
           # `./packages/digestkit` をローカル sdist/build 経由で入れる。
           # uv workspace は経由しない (dev extras を引かないため)。
-          pip install "./packages/digestkit${{ matrix.extras }}"
+          # Phase 2c 以降は digestkit が digestkit-core>=0.1,<0.2 に依存するが、
+          # core はまだ PyPI 未公開のため同時に local path で渡し、resolver が
+          # ローカルから引けるようにする。core PyPI 公開後は core 行を削除可。
+          pip install \
+            "./packages/digestkit-core" \
+            "./packages/digestkit${{ matrix.extras }}"
       - name: Verify import surface
         run: |
           . .smoke-venv/bin/activate

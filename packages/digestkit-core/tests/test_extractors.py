@@ -60,9 +60,9 @@ def test_pdf_extractor_non_pdf_file() -> None:
 
 def test_webpage_extractor_default_timeout() -> None:
     extractor = WebPageExtractor()
-    assert extractor._timeout == 30.0
+    assert extractor._timeout == 30.0  # pyright: ignore[reportPrivateUsage]
 
 
 def test_webpage_extractor_custom_timeout() -> None:
     extractor = WebPageExtractor(timeout=10.0)
-    assert extractor._timeout == 10.0
+    assert extractor._timeout == 10.0  # pyright: ignore[reportPrivateUsage]

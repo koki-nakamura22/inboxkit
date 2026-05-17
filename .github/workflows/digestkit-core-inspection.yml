@@ -36,8 +36,12 @@ jobs:
         run: uv run pyright packages/digestkit-core/src
       - name: ruff
         run: uv run ruff check packages/digestkit-core && uv run ruff format --check packages/digestkit-core
-      - name: pytest with coverage
+      - name: pytest with coverage (combined digestkit-core + digestkit suites)
+        # digestkit_core のコードは digestkit の re-export チェーン経由でも実カバーされるため、
+        # 両テストスイートを通したカバレッジで判定する (ADR-0003 §「digestkit 公開 API 不変方針」
+        # と整合: canonical は core 側、digestkit のテストが core を実質駆動している)。
         run: >-
-          uv run --package digestkit-core pytest
+          uv run pytest
           --cov=digestkit_core --cov-report=term-missing --cov-fail-under=80
-          packages/digestkit-core/tests -m 'not demonstration and not needs_network'
+          packages/digestkit-core/tests packages/digestkit/tests
+          -m 'not demonstration and not needs_network'

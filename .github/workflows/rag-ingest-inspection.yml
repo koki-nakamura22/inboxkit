@@ -1,0 +1,37 @@
+name: rag-ingest inspection
+
+on:
+  pull_request:
+    paths: ["packages/rag-ingest/**"]
+  push:
+    branches: [main]
+    paths: ["packages/rag-ingest/**"]
+
+jobs:
+  neutrality-check:
+    name: digestkit import isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: grep for misplaced digestkit imports
+        run: |
+          if rg "^from digestkit" packages/rag-ingest/src --glob '!_upstream.py'; then
+            echo "::error::Found 'from digestkit' outside _upstream.py — violates neutrality principle (SR-M-006)"
+            exit 1
+          fi
+
+  coverage-and-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages --all-extras
+      - name: pyright
+        run: uv run pyright packages/rag-ingest/src
+      - name: ruff
+        run: uv run ruff check packages/rag-ingest && uv run ruff format --check packages/rag-ingest
+      - name: pytest with coverage
+        run: >-
+          uv run --package rag-ingest pytest
+          --cov=rag_ingest --cov-report=term-missing --cov-fail-under=80
+          packages/rag-ingest/tests -m 'not demonstration and not needs_network'

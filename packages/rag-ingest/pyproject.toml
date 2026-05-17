@@ -30,7 +30,7 @@ build-backend = "hatchling.build"
 packages = ["src/rag_ingest"]
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --cov=rag_ingest --cov-report=term-missing"
 markers = [
     "demonstration: 開発者の目視確認が必要 (実 embedder / 実 PDF / 別マシン)",
     "needs_network: 実ネットワーク必須 (CI でのみ実行、ralph-loop ではスキップ)",

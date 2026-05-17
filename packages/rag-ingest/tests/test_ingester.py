@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +124,19 @@ def test_run_limit_restricts_item_count() -> None:
     assert result.processed_sources == 2
 
 
+def test_run_limit_zero_processes_nothing() -> None:
+    source = StubSource(items=[Item(id="a", payload="x")])
+    result = StubIngester(source=source).run(limit=0)
+    assert result.processed_sources == 0
+    assert result.chunk_count == 0
+
+
+def test_run_limit_larger_than_item_count_processes_all() -> None:
+    source = StubSource(items=[Item(id=str(i), payload=f"x{i}") for i in range(3)])
+    result = StubIngester(source=source).run(limit=100)
+    assert result.processed_sources == 3
+
+
 # ── AC-001b: IngestContext construction and propagation ────────────────────────
 
 def test_run_ingest_context_carries_embedder_metadata() -> None:
@@ -190,7 +202,7 @@ def test_run_ingest_context_extracted_at_is_iso8601_compatible() -> None:
     StubIngester(sink=sink).run()
     _, _, _, ctx = sink.write_calls[0]
     iso = ctx.extracted_at.isoformat()
-    assert "+00:00" in iso or iso.endswith("Z")
+    assert "+00:00" in iso
 
 
 # ── AC-001c: dry_run mode ──────────────────────────────────────────────────────
@@ -219,6 +231,12 @@ def test_dry_run_sink_write_not_called() -> None:
 def test_dry_run_chunk_count_stays_zero() -> None:
     result = StubIngester().run(dry_run=True)
     assert result.chunk_count == 0
+
+
+def test_dry_run_chunks_accumulate_across_multiple_items() -> None:
+    source = StubSource(items=[Item(id="a", payload="x"), Item(id="b", payload="y")])
+    result = StubIngester(source=source).run(dry_run=True)
+    assert result.dry_run_chunks == 2  # StubChunker returns 1 chunk per item
 
 
 # ── AC-007: URI-based dedup ────────────────────────────────────────────────────
@@ -286,8 +304,10 @@ def test_idempotency_same_row_count_on_second_run(tmp_path: Path) -> None:
     ingester.run(force=True)
     conn = sqlite3.connect(db_path)
     count_after_first = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+    conn.close()
 
     ingester.run(force=True)
+    conn = sqlite3.connect(db_path)
     count_after_second = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
     conn.close()
 

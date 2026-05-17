@@ -1,3 +1,5 @@
+**English** | [日本語](README.ja.md)
+
 # digestkit
 
 Personal content digester framework: fetch → extract → LLM summarize → sink
@@ -93,12 +95,12 @@ Both styles are supported and can be mixed: when a subclass defines class attrib
 any kwarg passed to `__init__` overrides them (kwarg wins). This is the same hybrid
 pattern used by `seen_store` and `dedup_key`.
 
-### Notion DB → Web fetch → 要約 → Slack 通知
+### Notion DB → web fetch → summarize → Slack
 
-Notion データベースの URL プロパティを起点に Web ページを取得・要約し、Slack に
-通知する王道パイプライン. `NotionDatabaseSource(url_property=...)` を指定すると
-`item.payload` が URL 文字列になり `WebPageExtractor` とそのまま接続できる
-(元の Notion page object は `item.metadata["page"]` から参照可能):
+A common pipeline: walk a Notion database's URL property, fetch + summarize
+each page, post to Slack. Specifying `NotionDatabaseSource(url_property=...)`
+makes `item.payload` a URL string so `WebPageExtractor` connects directly
+(the original Notion page object remains available at `item.metadata["page"]`):
 
 ```python
 from digestkit import Digester
@@ -122,11 +124,13 @@ digester = Digester(
 digester.run()
 ```
 
-`NotionDatabaseSource` は Notion 3.x の Data Sources API (`data_sources/{id}/query`)
-に**自動対応**する. 初回 `fetch()` で `databases.retrieve` を 1 回呼び `data_sources`
-の有無を判定し、結果はインスタンス内にキャッシュする (2 回目以降の retrieve 呼び出しは
-発生しない). 3.x で新規作成された DB は新 API、旧 DB は旧 `databases/{id}/query` へ
-透過的に fallback されるため、利用者側で API バージョンを意識する必要はない.
+`NotionDatabaseSource` **transparently handles** Notion 3.x's Data Sources API
+(`data_sources/{id}/query`). The first `fetch()` makes a single
+`databases.retrieve` call to detect whether `data_sources` are present and
+caches the result on the instance (no further retrieve calls after that).
+DBs created on 3.x use the new API; legacy DBs fall back to the older
+`databases/{id}/query` automatically — callers don't need to think about
+API versions.
 
 ## Long documents (chunked / map-reduce)
 
@@ -155,10 +159,10 @@ the chunk index in the error message.
 
 ## Anthropic prompt caching (cache_control)
 
-`LLMSummarizer` の `system_prompt` は `str` のほか、LiteLLM が受け付ける
-content block のリスト (`list[dict]`) でも指定できる。これにより Anthropic
-の prompt caching (`cache_control: {"type": "ephemeral"}`) を有効にして、
-長い system prompt の入力トークン課金を大幅に削減できる:
+`LLMSummarizer.system_prompt` accepts either a `str` or a list of LiteLLM
+content blocks (`list[dict]`). The list form lets you enable Anthropic
+prompt caching (`cache_control: {"type": "ephemeral"}`) so that the input
+tokens of a long system prompt are billed at the cache-hit rate:
 
 ```python
 from digestkit.summarizers import LLMSummarizer
@@ -169,32 +173,33 @@ summarizer = LLMSummarizer(
     system_prompt=[
         {
             "type": "text",
-            "text": "<長い system prompt (JSON スキーマ・出力例など)>",
+            "text": "<long system prompt (JSON schema, output examples, ...)>",
             "cache_control": {"type": "ephemeral"},
         },
     ],
 )
 ```
 
-`system_prompt` を従来通り `str` で渡した場合の挙動は変わらない (後方互換)。
+Passing `system_prompt` as a plain `str` keeps the previous behavior
+(backward compatible).
 
-block 構造を意識せず system prompt 全体をキャッシュしたいだけの場合は、
-`system_prompt_cache=True` フラグを指定する簡素な経路も用意している:
+If you just want to cache the entire system prompt without dealing with
+content blocks yourself, use the `system_prompt_cache=True` shortcut:
 
 ```python
 summarizer = LLMSummarizer(
     provider="anthropic",
     model="claude-sonnet-4-6",
-    system_prompt="<長い system prompt>",
-    system_prompt_cache=True,   # str を ephemeral cache_control 付き block に自動変換
+    system_prompt="<long system prompt>",
+    system_prompt_cache=True,   # auto-wraps the str in an ephemeral cache_control block
 )
 ```
 
-複数 block のうち一部だけキャッシュしたい等の細かい制御が必要な場合は
-list 指定 (上記サンプル) を使う。`system_prompt_cache=True` と list 指定は
-同時に使えない (cache_control の制御権が衝突するため)。
+For finer control (caching only some of several blocks, etc.), use the list
+form shown above. `system_prompt_cache=True` and the list form are mutually
+exclusive (they fight over control of `cache_control`).
 
-詳細は LiteLLM 公式ドキュメントを参照:
+See the LiteLLM docs for details:
 <https://docs.litellm.ai/docs/providers/anthropic#prompt-caching>
 
 ## Configuration
@@ -236,3 +241,8 @@ host future packages for RAG ingestion and personal knowledge bases.
 | `all`    | all of the above   | Install everything             |
 
 Install any extra with `pip install digestkit[<extra>]`.
+
+## Contributing
+
+See the umbrella [CONTRIBUTING.md](../../CONTRIBUTING.md) for development
+setup, lint / format / typecheck targets, and the pre-commit hook.

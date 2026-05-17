@@ -50,10 +50,9 @@ def test_run_sink_write_called_once_per_source() -> None:
     assert len(sink.write_calls) == 2
 
 
-def test_run_call_order_chunk_before_embed(
+def test_run_chunk_and_embed_both_called(
     stub_chunker: StubChunker, stub_embedder: StubEmbedder
 ) -> None:
-    """chunk must be called before embed (call_count > 0 after run)."""
     ingester = StubIngester(chunker=stub_chunker, embedder=stub_embedder)
     ingester.run()
     assert stub_chunker.call_count == 1
@@ -63,6 +62,10 @@ def test_run_call_order_chunk_before_embed(
 def test_run_no_failures_on_success() -> None:
     result = StubIngester().run()
     assert result.failures == []
+
+
+def test_run_skipped_count_zero_on_success() -> None:
+    result = StubIngester().run()
     assert result.skipped_count == 0
 
 
@@ -100,6 +103,50 @@ def test_dry_run_sink_write_not_called() -> None:
 def test_dry_run_chunk_count_stays_zero() -> None:
     result = StubIngester().run(dry_run=True)
     assert result.chunk_count == 0
+
+
+def test_run_ingest_context_carries_embedder_metadata() -> None:
+    sink = StubVectorSink()
+    StubIngester(sink=sink).run()
+    _, _, _, ctx = sink.write_calls[0]
+    assert ctx.embedder_provider == "stub"
+    assert ctx.embedder_model == "stub-model"
+    assert ctx.chunker_config == {"chunk_size": 512, "overlap": 0, "unit": "tokens"}
+
+
+# ── failure path ───────────────────────────────────────────────────────────────
+
+def test_run_records_failure_on_extractor_exception() -> None:
+    class BrokenExtractor(StubExtractor):
+        def extract(self, item: Item) -> str:
+            raise RuntimeError("extraction failed")
+
+    ingester = StubIngester()
+    ingester.extractor = BrokenExtractor()
+    result = ingester.run()
+    assert len(result.failures) == 1
+    assert "extraction failed" in result.failures[0]["error"]
+
+
+def test_run_continues_after_per_item_failure() -> None:
+    """One failing item does not abort remaining items."""
+    call_count = 0
+
+    class FlakyExtractor(StubExtractor):
+        def extract(self, item: Item) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("first item fails")
+            return str(item.payload)
+
+    source = StubSource(items=[Item(id="a", payload="x"), Item(id="b", payload="y")])
+    sink = StubVectorSink()
+    ingester = StubIngester(source=source, sink=sink)
+    ingester.extractor = FlakyExtractor()
+    result = ingester.run()
+    assert len(result.failures) == 1
+    assert len(sink.write_calls) == 1  # second item succeeded
 
 
 # ── ConfigurationError ─────────────────────────────────────────────────────────

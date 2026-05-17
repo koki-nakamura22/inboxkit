@@ -5,6 +5,7 @@ requires-python = ">=3.11, <3.14"
 [manifest]
 members = [
     "digestkit",
+    "digestkit-core",
     "inboxkit-workspace",
     "rag-ingest",
 ]
@@ -343,6 +344,7 @@ name = "digestkit"
 version = "0.1.0"
 source = { editable = "packages/digestkit" }
 dependencies = [
+    { name = "digestkit-core" },
     { name = "litellm" },
     { name = "python-dotenv" },
 ]
@@ -370,7 +372,8 @@ web = [
 
 [package.metadata]
 requires-dist = [
-    { name = "digestkit", extras = ["pdf", "web", "notion", "slack", "email"], marker = "extra == 'all'" },
+    { name = "digestkit", extras = ["pdf", "web", "notion", "slack", "email"], marker = "extra == 'all'", editable = "packages/digestkit" },
+    { name = "digestkit-core", editable = "packages/digestkit-core" },
     { name = "httpx", marker = "extra == 'slack'", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'web'", specifier = ">=0.27" },
     { name = "litellm", specifier = ">=1.50,<2" },
@@ -380,6 +383,49 @@ requires-dist = [
     { name = "trafilatura", marker = "extra == 'web'", specifier = ">=1.12" },
 ]
 provides-extras = ["pdf", "web", "notion", "slack", "email", "all"]
+
+[[package]]
+name = "digestkit-core"
+version = "0.1.0"
+source = { editable = "packages/digestkit-core" }
+
+[package.optional-dependencies]
+all = [
+    { name = "httpx" },
+    { name = "notion-client" },
+    { name = "pypdf" },
+    { name = "trafilatura" },
+]
+dev = [
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+notion = [
+    { name = "notion-client" },
+]
+pdf = [
+    { name = "pypdf" },
+]
+web = [
+    { name = "httpx" },
+    { name = "trafilatura" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "digestkit-core", extras = ["pdf", "web", "notion"], marker = "extra == 'all'", editable = "packages/digestkit-core" },
+    { name = "httpx", marker = "extra == 'web'", specifier = ">=0.27" },
+    { name = "notion-client", marker = "extra == 'notion'", specifier = ">=2" },
+    { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=4" },
+    { name = "pyright", marker = "extra == 'dev'" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "ruff", marker = "extra == 'dev'" },
+    { name = "trafilatura", marker = "extra == 'web'", specifier = ">=1.12" },
+]
+provides-extras = ["pdf", "web", "notion", "all", "dev"]
 
 [[package]]
 name = "distro"
@@ -644,6 +690,11 @@ wheels = [
 name = "inboxkit-workspace"
 version = "0.0.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "digestkit", extra = ["notion", "pdf", "web"] },
+    { name = "digestkit-core", extra = ["notion", "pdf", "web"] },
+    { name = "rag-ingest" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -655,6 +706,11 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "digestkit", extras = ["pdf", "web", "notion"], editable = "packages/digestkit" },
+    { name = "digestkit-core", extras = ["pdf", "web", "notion"], editable = "packages/digestkit-core" },
+    { name = "rag-ingest", editable = "packages/rag-ingest" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1401,7 +1457,7 @@ version = "0.1.0"
 source = { editable = "packages/rag-ingest" }
 dependencies = [
     { name = "click" },
-    { name = "digestkit" },
+    { name = "digestkit-core" },
     { name = "litellm" },
     { name = "python-dotenv" },
     { name = "sqlite-vec" },
@@ -1419,7 +1475,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8" },
-    { name = "digestkit", editable = "packages/digestkit" },
+    { name = "digestkit-core", editable = "packages/digestkit-core" },
     { name = "litellm", specifier = ">=1.50,<2" },
     { name = "pyright", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },

@@ -1,6 +1,6 @@
 """Issue #42: Notion API 429 rate-limit retry の挙動テスト.
 
-対象: ``digestkit._notion_retry.with_retry`` + ``NotionDatabaseSource`` /
+対象: ``digestkit_core._notion_retry.with_retry`` + ``NotionDatabaseSource`` /
 ``NotionPageSink`` のコンストラクタ引数 (``max_retries`` / ``initial_backoff_sec``).
 """
 
@@ -13,11 +13,11 @@ import httpx
 import pytest
 from notion_client.errors import APIErrorCode, APIResponseError
 
-from digestkit._notion_retry import with_retry
 from digestkit.sinks import SinkError
 from digestkit.sinks.notion_page import NotionPageSink
 from digestkit.sources.notion_database import NotionDatabaseSource
 from digestkit.types import Digest, Item
+from digestkit_core._notion_retry import with_retry
 
 
 def _rate_limited(retry_after: str | None = None) -> APIResponseError:
@@ -127,7 +127,7 @@ def test_with_retry_respects_retry_after_http_date(monkeypatch: pytest.MonkeyPat
 
     # time.time を固定して HTTP date との差分を決定論的にする
     fixed_now = 1_700_000_000.0
-    monkeypatch.setattr("digestkit._notion_retry.time.time", lambda: fixed_now)
+    monkeypatch.setattr("digestkit_core._notion_retry.time.time", lambda: fixed_now)
 
     # fixed_now + 10s 後を HTTP date で表現
     import email.utils
@@ -192,8 +192,8 @@ def test_notion_database_source_retries_on_429_in_fetch() -> None:
 
     sleeps: list[float] = []
     with (
-        patch("digestkit.sources.notion_database.Client", return_value=mock_client),
-        patch("digestkit._notion_retry.time.sleep", side_effect=sleeps.append),
+        patch("digestkit_core.sources.notion_database.Client", return_value=mock_client),
+        patch("digestkit_core._notion_retry.time.sleep", side_effect=sleeps.append),
     ):
         source = NotionDatabaseSource(
             database_id="db-id", token="t", max_retries=3, initial_backoff_sec=0.5
@@ -214,7 +214,7 @@ def test_notion_database_source_propagates_non_429() -> None:
 
     mock_client.request.side_effect = side_effect
 
-    with patch("digestkit.sources.notion_database.Client", return_value=mock_client):
+    with patch("digestkit_core.sources.notion_database.Client", return_value=mock_client):
         source = NotionDatabaseSource(database_id="db-id", token="t")
         with pytest.raises(APIResponseError) as excinfo:
             list(source.fetch())
@@ -235,8 +235,8 @@ def test_notion_database_source_ack_success_retries_on_429() -> None:
 
     sleeps: list[float] = []
     with (
-        patch("digestkit.sources.notion_database.Client", return_value=mock_client),
-        patch("digestkit._notion_retry.time.sleep", side_effect=sleeps.append),
+        patch("digestkit_core.sources.notion_database.Client", return_value=mock_client),
+        patch("digestkit_core._notion_retry.time.sleep", side_effect=sleeps.append),
     ):
         source = NotionDatabaseSource(
             database_id="db-id",
@@ -257,7 +257,7 @@ def test_notion_database_source_raises_when_max_retries_negative() -> None:
     from digestkit.digester import ConfigurationError
 
     with (
-        patch("digestkit.sources.notion_database.Client", return_value=MagicMock()),
+        patch("digestkit_core.sources.notion_database.Client", return_value=MagicMock()),
         pytest.raises(ConfigurationError, match="max_retries"),
     ):
         NotionDatabaseSource(database_id="db-id", token="t", max_retries=-1)
@@ -281,7 +281,7 @@ def test_notion_page_sink_retries_on_429() -> None:
     sleeps: list[float] = []
     with (
         patch("digestkit.sinks.notion_page.Client", return_value=mock_client),
-        patch("digestkit._notion_retry.time.sleep", side_effect=sleeps.append),
+        patch("digestkit_core._notion_retry.time.sleep", side_effect=sleeps.append),
     ):
         sink = NotionPageSink(token="t", max_retries=2, initial_backoff_sec=0.1)
         sink.write(
@@ -301,7 +301,7 @@ def test_notion_page_sink_wraps_429_in_sink_error_after_exceeding_retries() -> N
     sleeps: list[float] = []
     with (
         patch("digestkit.sinks.notion_page.Client", return_value=mock_client),
-        patch("digestkit._notion_retry.time.sleep", side_effect=sleeps.append),
+        patch("digestkit_core._notion_retry.time.sleep", side_effect=sleeps.append),
     ):
         sink = NotionPageSink(token="t", max_retries=1, initial_backoff_sec=0.01)
         with pytest.raises(SinkError, match="rate limited"):
@@ -321,7 +321,7 @@ def test_notion_page_sink_does_not_retry_non_429() -> None:
     sleeps: list[float] = []
     with (
         patch("digestkit.sinks.notion_page.Client", return_value=mock_client),
-        patch("digestkit._notion_retry.time.sleep", side_effect=sleeps.append),
+        patch("digestkit_core._notion_retry.time.sleep", side_effect=sleeps.append),
     ):
         sink = NotionPageSink(token="t")
         with pytest.raises(SinkError):

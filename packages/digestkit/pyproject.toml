@@ -19,6 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "digestkit-core>=0.1,<0.2",
     "litellm>=1.50,<2",
     "python-dotenv>=1",
 ]
@@ -39,6 +40,9 @@ digestkit = "digestkit.cli:main"
 [project.urls]
 Repository = "https://github.com/koki-nakamura22/inboxkit"
 Issues = "https://github.com/koki-nakamura22/inboxkit/issues"
+
+[tool.uv.sources]
+digestkit-core = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -1,0 +1,43 @@
+name: digestkit-core inspection
+
+on:
+  pull_request:
+    paths: ["packages/digestkit-core/**"]
+  push:
+    branches: [main]
+    paths: ["packages/digestkit-core/**"]
+
+jobs:
+  neutrality-check:
+    name: core neutrality (no digestkit/rag_ingest reverse deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: grep for digestkit reverse imports
+        run: |
+          if rg "^from digestkit\b" packages/digestkit-core/src; then
+            echo "::error::Found 'from digestkit' in digestkit-core/src — violates neutrality principle (core must not depend on digestkit)"
+            exit 1
+          fi
+      - name: grep for rag_ingest reverse imports
+        run: |
+          if rg "^from rag_ingest\b" packages/digestkit-core/src; then
+            echo "::error::Found 'from rag_ingest' in digestkit-core/src — violates neutrality principle (core must not depend on rag-ingest)"
+            exit 1
+          fi
+
+  coverage-and-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-packages --all-extras
+      - name: pyright
+        run: uv run pyright packages/digestkit-core/src
+      - name: ruff
+        run: uv run ruff check packages/digestkit-core && uv run ruff format --check packages/digestkit-core
+      - name: pytest with coverage
+        run: >-
+          uv run --package digestkit-core pytest
+          --cov=digestkit_core --cov-report=term-missing --cov-fail-under=80
+          packages/digestkit-core/tests -m 'not demonstration and not needs_network'

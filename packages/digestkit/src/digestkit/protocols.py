@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from digestkit.types import Digest, Item
+from digestkit_core.protocols import (
+    Extractor,
+    Source,
+)
+from digestkit_core.types import Digest, FailureInfo, Item
 
-if TYPE_CHECKING:
-    # FailureInfo lives in digester.py which imports from this module; keep the
-    # reference TYPE_CHECKING-only to avoid a runtime circular import.
-    from digestkit.digester import FailureInfo
-
-
-@runtime_checkable
-class Source(Protocol):
-    def fetch(self) -> Iterable[Item]: ...
+__all__ = ["AckSource", "Extractor", "Sink", "Source", "Summarizer"]
 
 
 @runtime_checkable
@@ -40,11 +36,6 @@ class AckSource(Protocol):
     def ack_success(self, item: Item, digest: Digest) -> None: ...
 
     def ack_failure(self, failure: FailureInfo) -> None: ...
-
-
-@runtime_checkable
-class Extractor(Protocol):
-    def extract(self, item: Item) -> str: ...
 
 
 @runtime_checkable

@@ -35,7 +35,7 @@ def test_sources_does_not_eager_import_notion() -> None:
         import sys
         from digestkit.sources import LocalDirectorySource  # noqa: F401
 
-        assert "digestkit.sources.notion_database" not in sys.modules, (
+        assert "digestkit_core.sources.notion_database" not in sys.modules, (
             "notion_database should be lazy-loaded; got eager import"
         )
         """
@@ -50,10 +50,10 @@ def test_sources_lazy_loads_notion_on_access() -> None:
         import sys
         import digestkit.sources
 
-        assert "digestkit.sources.notion_database" not in sys.modules
+        assert "digestkit_core.sources.notion_database" not in sys.modules
         cls = digestkit.sources.NotionDatabaseSource
         assert cls is not None
-        assert "digestkit.sources.notion_database" in sys.modules
+        assert "digestkit_core.sources.notion_database" in sys.modules
         """
     )
     assert result.returncode == 0, result.stderr

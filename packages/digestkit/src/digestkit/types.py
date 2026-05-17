@@ -1,29 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from digestkit_core.types import (
+    Digest,
+    DigestkitError,
+    Item,
+)
 
-
-class DigestkitError(Exception):
-    """digestkit 固有例外の base."""
-
-
-@dataclass(frozen=True)
-class Item:
-    id: str
-    payload: Any  # type depends on Source (e.g. Path for LocalDirectorySource)
-    metadata: dict[str, Any] | None = None
-    """Source 由来の補助情報 (例: Notion page object 全体).
-
-    payload を Extractor が期待する型 (URL 文字列など) に揃えつつ、
-    AckSource の callback などで元データを参照する用途で使う.
-    """
-
-
-@dataclass(frozen=True)
-class Digest:
-    summary: str
-    tokens_in: int
-    tokens_out: int
-    latency_ms: int
-    model: str
+__all__ = ["Digest", "DigestkitError", "Item"]

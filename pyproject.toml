@@ -12,9 +12,19 @@ name = "inboxkit-workspace"
 version = "0.0.0"
 description = "umbrella workspace for digestkit / digestkit-core / rag-ingest / personal-rag"
 requires-python = ">=3.11,<3.14"
+dependencies = [
+    "digestkit-core[pdf,web,notion]",
+    "digestkit[pdf,web,notion]",
+    "rag-ingest",
+]
 
 [tool.uv.workspace]
 members = ["packages/*"]
+
+[tool.uv.sources]
+digestkit-core = { workspace = true }
+digestkit = { workspace = true }
+rag-ingest = { workspace = true }
 
 [tool.uv]
 dev-dependencies = [

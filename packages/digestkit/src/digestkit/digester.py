@@ -7,7 +7,26 @@ from typing import Any, Literal, final
 
 from digestkit.dedup import SeenStore, SQLiteSeenStore, default_seen_store_path, item_id_key
 from digestkit.protocols import AckSource, Extractor, Sink, Source, Summarizer
-from digestkit.types import Digest, DigestkitError, Item
+from digestkit.types import Digest, Item
+from digestkit_core.types import (
+    ConfigurationError as ConfigurationError,  # re-export (canonical: digestkit_core)
+)
+from digestkit_core.types import (
+    FailureInfo as FailureInfo,  # re-export (canonical: digestkit_core)
+)
+from digestkit_core.types import (
+    FailureStage as FailureStage,  # re-export (canonical: digestkit_core)
+)
+
+__all__ = [
+    "AckMode",
+    "ConfigurationError",
+    "DedupKeyFn",
+    "Digester",
+    "FailureInfo",
+    "FailureStage",
+    "RunResult",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -39,20 +58,7 @@ class _AckModeSentinel:
 
 _ACK_MODE_UNSET = _AckModeSentinel()
 
-
-class ConfigurationError(DigestkitError):
-    """Digester サブクラスの設定不備 (必須属性欠落 等)."""
-
-
-FailureStage = Literal["extract", "summarize", "write"]
 AckMode = Literal["per_item", "after_run"]
-
-
-@dataclass(frozen=True)
-class FailureInfo:
-    item: Item
-    stage: FailureStage
-    error: BaseException
 
 
 @dataclass

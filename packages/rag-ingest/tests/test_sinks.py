@@ -47,14 +47,22 @@ def test_sink_upsert(tmp_path: Path) -> None:
     item = make_item("file:///a.pdf")
 
     sink.write(chunks, vectors, item, ctx)
-    sink.write(chunks, vectors, item, ctx)  # 2nd write: upsert
+    updated = [Chunk(text=f"updated_{i}", chunk_index=i, metadata={}) for i in range(3)]
+    sink.write(updated, vectors, item, ctx)  # 2nd write: upsert
 
     conn = sqlite3.connect(str(db))
     count = conn.execute(
         "SELECT COUNT(*) FROM documents WHERE source_uri='file:///a.pdf'"
     ).fetchone()[0]
+    texts = {
+        row[0]
+        for row in conn.execute(
+            "SELECT content FROM documents WHERE source_uri='file:///a.pdf'"
+        ).fetchall()
+    }
     conn.close()
     assert count == 3
+    assert all(t.startswith("updated_") for t in texts)
 
 
 @pytest.mark.needs_sqlite_vec
@@ -184,3 +192,25 @@ def test_existing_source_uris(tmp_path: Path) -> None:
     sink.write(make_chunks(1), make_vectors(1), make_item("file:///b.pdf"), ctx)
 
     assert sink.existing_source_uris() == {"file:///a.pdf", "file:///b.pdf"}
+
+
+@pytest.mark.needs_sqlite_vec
+def test_write_empty_chunks(tmp_path: Path) -> None:
+    """write() with empty lists returns immediately without creating the table."""
+    db = tmp_path / "rag.db"
+    sink = SQLiteVecSink(str(db), dim=4)
+    sink.write([], [], make_item("file:///a.pdf"), make_ctx())
+    assert sink.existing_source_uris() == set()
+
+
+@pytest.mark.needs_sqlite_vec
+def test_dim_inferred_from_vectors(tmp_path: Path) -> None:
+    """dim=None (default): dimension is inferred from the first write's vectors."""
+    db = tmp_path / "rag.db"
+    sink = SQLiteVecSink(str(db))  # dim=None
+    vectors: list[Vector] = [[0.1, 0.2, 0.3]]
+    sink.write(make_chunks(1), vectors, make_item("file:///a.pdf"), make_ctx())
+    conn = sqlite3.connect(str(db))
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    conn.close()
+    assert "vector" in cols

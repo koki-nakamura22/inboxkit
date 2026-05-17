@@ -58,9 +58,7 @@ def test_pdf_extractor_non_pdf_file() -> None:
         tmp_path.unlink(missing_ok=True)
 
 
-def test_webpage_extractor_non_html() -> None:
-    pytest.importorskip("httpx")
-    pytest.importorskip("trafilatura")
+def test_webpage_extractor_default_timeout() -> None:
     extractor = WebPageExtractor()
     assert extractor._timeout == 30.0
 

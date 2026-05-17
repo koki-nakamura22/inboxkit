@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+import pytest
+
 from digestkit_core.protocols import Extractor, Source
 from digestkit_core.types import Item
 
@@ -44,14 +46,11 @@ def test_item_dataclass_fields() -> None:
 
 
 def test_item_is_frozen() -> None:
+    import dataclasses
+
     item = Item(id="x", payload="y")
-    try:
+    with pytest.raises(dataclasses.FrozenInstanceError):
         item.id = "z"  # type: ignore[misc]
-        raise AssertionError("should have raised")
-    except AssertionError:
-        raise
-    except Exception:
-        pass
 
 
 def test_item_metadata_default_none() -> None:

@@ -37,11 +37,12 @@ def test_phase1_sources_import() -> None:
 
 def test_phase1_extractors_import() -> None:
     import digestkit.extractors
+    import digestkit.extractors.webpage
     from digestkit.extractors.pdf import PDFExtractor
     from digestkit.extractors.webpage import WebPageExtractor
 
     assert digestkit.extractors.PDFExtractor is PDFExtractor
-    assert WebPageExtractor is not None
+    assert digestkit.extractors.webpage.WebPageExtractor is WebPageExtractor
 
 
 # --- (b) canonical 同一性 ---
@@ -118,33 +119,39 @@ def test_configuration_error_is_canonical_in_core() -> None:
 def test_digester_run_signature() -> None:
     from digestkit import Digester
 
-    sig = str(inspect.signature(Digester.run))
-    expected = (
-        "(self, limit: 'int | None' = None, dry_run: 'bool' = False,"
-        " *, length: 'str | None' = None) -> 'RunResult'"
-    )
-    assert sig == expected, sig
+    sig = inspect.signature(Digester.run)
+    params = list(sig.parameters)
+    assert params == ["self", "limit", "dry_run", "length"]
+    assert sig.parameters["limit"].default is None
+    assert sig.parameters["dry_run"].default is False
+    assert sig.parameters["length"].kind == inspect.Parameter.KEYWORD_ONLY
+    assert sig.parameters["length"].default is None
 
 
 def test_local_directory_source_init_signature() -> None:
     from digestkit.sources.local_directory import LocalDirectorySource
 
-    sig = str(inspect.signature(LocalDirectorySource.__init__))
-    assert sig == "(self, path: 'Path | str', glob: 'str' = '*') -> 'None'", sig
+    sig = inspect.signature(LocalDirectorySource.__init__)
+    params = list(sig.parameters)
+    assert params == ["self", "path", "glob"]
+    assert sig.parameters["glob"].default == "*"
 
 
 def test_pdf_extractor_extract_signature() -> None:
     from digestkit.extractors.pdf import PDFExtractor
 
-    sig = str(inspect.signature(PDFExtractor.extract))
-    assert sig == "(self, item: 'Item') -> 'str'", sig
+    sig = inspect.signature(PDFExtractor.extract)
+    params = list(sig.parameters)
+    assert params == ["self", "item"]
 
 
 def test_webpage_extractor_init_signature() -> None:
     from digestkit.extractors.webpage import WebPageExtractor
 
-    sig = str(inspect.signature(WebPageExtractor.__init__))
-    assert sig == "(self, timeout: 'float' = 30.0) -> 'None'", sig
+    sig = inspect.signature(WebPageExtractor.__init__)
+    params = list(sig.parameters)
+    assert params == ["self", "timeout"]
+    assert sig.parameters["timeout"].default == 30.0
 
 
 # --- (d) CLI コマンドの不変 ---

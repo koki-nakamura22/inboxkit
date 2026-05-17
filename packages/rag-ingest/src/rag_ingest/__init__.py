@@ -7,8 +7,8 @@ from rag_ingest.types import Chunk, IngestContext, Vector
 __all__ = [
     "Chunk",
     "ConfigurationError",
-    "Ingester",
     "IngestContext",
+    "Ingester",
     "RagIngestError",
     "RunResult",
     "Vector",

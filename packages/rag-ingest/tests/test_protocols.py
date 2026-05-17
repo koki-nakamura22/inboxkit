@@ -1,8 +1,8 @@
 """AC-002: duck-typed implementations pass isinstance checks for all Protocols."""
+
 from __future__ import annotations
 
 from conftest import StubChunker, StubEmbedder, StubVectorSink
-
 from rag_ingest.protocols import Chunker, Embedder, VectorSink
 
 

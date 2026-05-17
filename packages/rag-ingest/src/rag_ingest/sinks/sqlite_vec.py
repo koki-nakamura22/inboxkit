@@ -82,7 +82,7 @@ class SQLiteVecSink:
         self._ensure_table(dim)
         source_uri = item.id
         try:
-            for chunk, vector in zip(chunks, vectors):
+            for chunk, vector in zip(chunks, vectors, strict=True):
                 metadata: dict[str, object] = {
                     "source_type": ingest_context.source_type,
                     "extracted_at": ingest_context.extracted_at.isoformat(),
@@ -110,9 +110,7 @@ class SQLiteVecSink:
 
     def existing_source_uris(self) -> set[str]:
         try:
-            rows = self._conn.execute(
-                f"SELECT DISTINCT source_uri FROM {self._table}"
-            ).fetchall()
+            rows = self._conn.execute(f"SELECT DISTINCT source_uri FROM {self._table}").fetchall()
             return {row[0] for row in rows}
         except sqlite3.OperationalError:
             return set()

@@ -1,4 +1,5 @@
 """AC-003 / AC-003b: FixedSizeChunker — char unit and token unit boundary conditions."""
+
 from __future__ import annotations
 
 import math

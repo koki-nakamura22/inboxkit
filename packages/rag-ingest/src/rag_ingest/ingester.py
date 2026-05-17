@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from rag_ingest._upstream import Extractor, Item, Source
@@ -74,5 +74,5 @@ class Ingester(ABC):
             chunker_config=self.chunker.config,
             extractor_version=getattr(self.extractor, "version", "unknown"),
             source_type=getattr(self.extractor, "source_type", type(self.extractor).__name__),
-            extracted_at=datetime.now(tz=timezone.utc),
+            extracted_at=datetime.now(tz=UTC),
         )

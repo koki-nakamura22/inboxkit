@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import struct
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -24,7 +24,7 @@ def make_ctx() -> IngestContext:
         chunker_config={"chunk_size": 512, "overlap": 64, "unit": "token"},
         extractor_version="0.1.0",
         source_type="pdf",
-        extracted_at=datetime(2026, 5, 17, 0, 0, 0, tzinfo=timezone.utc),
+        extracted_at=datetime(2026, 5, 17, 0, 0, 0, tzinfo=UTC),
     )
 
 
@@ -100,9 +100,15 @@ def test_schema_and_sqlite_vec_loaded(tmp_path: Path) -> None:
 
     conn = sqlite3.connect(str(db))
     cols = {row[1] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
-    assert {"id", "content", "vector", "source_uri", "chunk_index", "metadata", "created_at"}.issubset(
-        cols
-    )
+    assert {
+        "id",
+        "content",
+        "vector",
+        "source_uri",
+        "chunk_index",
+        "metadata",
+        "created_at",
+    }.issubset(cols)
     # index_list: idx[2] == 1 means UNIQUE
     indices = conn.execute("PRAGMA index_list(documents)").fetchall()
     assert any(idx[2] == 1 for idx in indices)

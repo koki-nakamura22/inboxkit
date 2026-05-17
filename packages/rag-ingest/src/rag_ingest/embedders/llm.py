@@ -9,9 +9,8 @@ import litellm
 from rag_ingest.exceptions import EmbeddingError
 from rag_ingest.types import Chunk, Vector
 
-# litellm.embedding has partially-unknown overload types; getattr returns Any,
-# avoiding reportUnknownMemberType in pyright strict mode.
-_litellm_embedding: Any = getattr(litellm, "embedding")
+# litellm.embedding has partially-unknown overload types; bypass via getattr (returns Any).
+_litellm_embedding: Any = getattr(litellm, "embedding")  # noqa: B009
 
 _logger = logging.getLogger(__name__)
 

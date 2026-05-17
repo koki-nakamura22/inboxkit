@@ -1,4 +1,5 @@
 """CLI tests: AC-008 / AC-008b / AC-008c."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -89,7 +90,9 @@ class _PreloadedSink:
 
 
 def _write_basic(tmp_path: Path, n: int = 3) -> Path:
-    code = _STUB_CLASSES + f"""\
+    code = (
+        _STUB_CLASSES
+        + f"""\
 class MyIngester(Ingester):
     def __init__(self) -> None:
         self.source = _Source({n})
@@ -98,13 +101,16 @@ class MyIngester(Ingester):
         self.embedder = _Embedder()
         self.sink = _Sink()
 """
+    )
     p = tmp_path / "my_ingester.py"
     p.write_text(code)
     return p
 
 
 def _write_partial_fail(tmp_path: Path) -> Path:
-    code = _STUB_CLASSES + """\
+    code = (
+        _STUB_CLASSES
+        + """\
 class MyIngester(Ingester):
     def __init__(self) -> None:
         self.source = _Source(3)
@@ -113,13 +119,16 @@ class MyIngester(Ingester):
         self.embedder = _Embedder()
         self.sink = _Sink()
 """
+    )
     p = tmp_path / "my_ingester.py"
     p.write_text(code)
     return p
 
 
 def _write_all_fail(tmp_path: Path) -> Path:
-    code = _STUB_CLASSES + """\
+    code = (
+        _STUB_CLASSES
+        + """\
 class MyIngester(Ingester):
     def __init__(self) -> None:
         self.source = _Source(3)
@@ -128,6 +137,7 @@ class MyIngester(Ingester):
         self.embedder = _Embedder()
         self.sink = _Sink()
 """
+    )
     p = tmp_path / "my_ingester.py"
     p.write_text(code)
     return p
@@ -142,17 +152,22 @@ def _write_no_subclass(tmp_path: Path) -> Path:
 
 def _write_no_attrs_subclass(tmp_path: Path) -> Path:
     """Module with Ingester subclass that has no required attrs (→ ConfigurationError)."""
-    code = _STUB_CLASSES + """\
+    code = (
+        _STUB_CLASSES
+        + """\
 class MyIngester(Ingester):
     pass  # no source/extractor/chunker/embedder/sink → ConfigurationError
 """
+    )
     p = tmp_path / "my_ingester.py"
     p.write_text(code)
     return p
 
 
 def _write_multi_subclass(tmp_path: Path) -> Path:
-    code = _STUB_CLASSES + """\
+    code = (
+        _STUB_CLASSES
+        + """\
 class IngesterA(Ingester):
     def __init__(self) -> None:
         self.source = _Source(1)
@@ -170,13 +185,16 @@ class IngesterB(Ingester):
         self.embedder = _Embedder()
         self.sink = _Sink()
 """
+    )
     p = tmp_path / "my_ingester.py"
     p.write_text(code)
     return p
 
 
 def _write_preloaded(tmp_path: Path) -> Path:
-    code = _STUB_CLASSES + """\
+    code = (
+        _STUB_CLASSES
+        + """\
 class MyIngester(Ingester):
     def __init__(self) -> None:
         self.source = _Source(3)
@@ -185,6 +203,7 @@ class MyIngester(Ingester):
         self.embedder = _Embedder()
         self.sink = _PreloadedSink()
 """
+    )
     p = tmp_path / "my_ingester.py"
     p.write_text(code)
     return p

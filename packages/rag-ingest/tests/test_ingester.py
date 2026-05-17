@@ -1,4 +1,5 @@
 """Tests for Ingester.run(): AC-001 / 001b / 001c / 007 / 007b / R-003."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -9,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from conftest import StubChunker, StubEmbedder, StubExtractor, StubSource, StubVectorSink
-
 from rag_ingest._upstream import Item
 from rag_ingest.chunkers.fixed_size import FixedSizeChunker
 from rag_ingest.exceptions import ConfigurationError
@@ -63,6 +63,7 @@ def _make_e2e_ingester(
 
 # ── AC-001: normal flow ────────────────────────────────────────────────────────
 
+
 def test_run_returns_run_result() -> None:
     result = StubIngester().run()
     assert isinstance(result, RunResult)
@@ -106,9 +107,7 @@ def test_run_skipped_count_zero_on_success() -> None:
 
 
 def test_run_limit_restricts_item_count() -> None:
-    source = StubSource(
-        items=[Item(id=str(i), payload=f"text-{i}") for i in range(5)]
-    )
+    source = StubSource(items=[Item(id=str(i), payload=f"text-{i}") for i in range(5)])
     result = StubIngester(source=source).run(limit=2)
     assert result.processed_sources == 2
 
@@ -127,6 +126,7 @@ def test_run_limit_larger_than_item_count_processes_all() -> None:
 
 
 # ── AC-001b: IngestContext construction and propagation ────────────────────────
+
 
 def test_run_ingest_context_carries_embedder_metadata() -> None:
     sink = StubVectorSink()
@@ -196,6 +196,7 @@ def test_run_ingest_context_extracted_at_is_iso8601_compatible() -> None:
 
 # ── AC-001c: dry_run mode ──────────────────────────────────────────────────────
 
+
 def test_dry_run_chunks_recorded() -> None:
     result = StubIngester().run(dry_run=True)
     assert result.dry_run_chunks == 1
@@ -230,6 +231,7 @@ def test_dry_run_chunks_accumulate_across_multiple_items() -> None:
 
 # ── AC-007: URI-based dedup ────────────────────────────────────────────────────
 
+
 def test_dedup_pattern_a_fresh_db_processes_all() -> None:
     """Pattern A: no existing URIs → all 3 items processed."""
     items = [
@@ -262,6 +264,7 @@ def test_dedup_pattern_b_skips_existing_uris() -> None:
 
 # ── AC-007b: force bypasses dedup ─────────────────────────────────────────────
 
+
 def test_force_disables_dedup() -> None:
     """force=True: all items are processed even if URIs exist in the sink."""
     items = [
@@ -277,6 +280,7 @@ def test_force_disables_dedup() -> None:
 
 
 # ── AC-R-003: idempotency (real SQLiteVecSink) ─────────────────────────────────
+
 
 @pytest.mark.needs_sqlite_vec
 def test_idempotency_same_row_count_on_second_run(tmp_path: Path) -> None:
@@ -318,6 +322,7 @@ def test_idempotency_no_unique_constraint_error(tmp_path: Path) -> None:
 
 
 # ── AC-001 e2e: real FixedSizeChunker + real SQLiteVecSink ────────────────────
+
 
 @pytest.mark.needs_sqlite_vec
 def test_e2e_run_processes_two_sources(tmp_path: Path) -> None:
@@ -365,6 +370,7 @@ def test_e2e_dedup_with_real_sink(tmp_path: Path) -> None:
 
 # ── failure path ───────────────────────────────────────────────────────────────
 
+
 def test_run_records_failure_on_extractor_exception() -> None:
     class BrokenExtractor(StubExtractor):
         def extract(self, item: Item) -> str:
@@ -400,6 +406,7 @@ def test_run_continues_after_per_item_failure() -> None:
 
 
 # ── ConfigurationError ─────────────────────────────────────────────────────────
+
 
 def test_missing_required_attr_raises_configuration_error() -> None:
     class IncompleteIngester(Ingester):

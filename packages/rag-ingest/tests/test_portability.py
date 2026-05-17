@@ -21,14 +21,14 @@ def test_sqlite_vec_enable_load_extension_failure_raises(tmp_path: Path) -> None
     """AC-Po-001: SqliteVecLoadError with install hint when enable_load_extension fails."""
     # Arrange: mock connection raises OperationalError on enable_load_extension
     db = tmp_path / "rag.db"
-    mock_conn = _mock_conn_raising_on_enable(
-        sqlite3.OperationalError("not authorized")
-    )
+    mock_conn = _mock_conn_raising_on_enable(sqlite3.OperationalError("not authorized"))
 
     # Act
-    with patch("rag_ingest.sinks.sqlite_vec.sqlite3.connect", return_value=mock_conn):
-        with pytest.raises(SqliteVecLoadError) as exc_info:
-            SQLiteVecSink(str(db), dim=4)
+    with (
+        patch("rag_ingest.sinks.sqlite_vec.sqlite3.connect", return_value=mock_conn),
+        pytest.raises(SqliteVecLoadError) as exc_info,
+    ):
+        SQLiteVecSink(str(db), dim=4)
 
     # Assert: message contains install instructions and OS-specific hint
     msg = str(exc_info.value)

@@ -1,16 +1,16 @@
-"""Performance tests: AC-P-001 – AC-P-004."""
+"""Performance tests: AC-P-001 - AC-P-004."""
+
 from __future__ import annotations
 
 import time
 import tracemalloc
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from conftest import StubChunker, StubEmbedder, StubExtractor, StubSource, StubVectorSink
-
 from rag_ingest._upstream import Item
 from rag_ingest.ingester import Ingester
 from rag_ingest.sinks.sqlite_vec import SQLiteVecSink
@@ -26,7 +26,7 @@ def _make_ingest_context() -> IngestContext:
         chunker_config={"chunk_size": 100},
         extractor_version="1.0",
         source_type="bench",
-        extracted_at=datetime.now(tz=timezone.utc),
+        extracted_at=datetime.now(tz=UTC),
     )
 
 
@@ -115,7 +115,7 @@ def test_10k_chunks(tmp_path: Path) -> None:
     assert result.processed_sources == 100
     assert result.chunk_count == 10_000
     assert result.failures == []
-    assert total_bytes <= 500 * 1024 * 1024, f"memory {total_bytes / 1024 ** 2:.1f}MB > 500MB"
+    assert total_bytes <= 500 * 1024 * 1024, f"memory {total_bytes / 1024**2:.1f}MB > 500MB"
 
 
 # ── AC-P-003: SQLiteVecSink write 1,000 chunks ≤ 10s ─────────────────────────

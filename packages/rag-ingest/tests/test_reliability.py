@@ -1,10 +1,10 @@
 """Reliability tests: AC-R-001 (Source-level embed failure handling)."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from conftest import StubChunker, StubExtractor, StubSource, StubVectorSink
-
 from rag_ingest._upstream import Item
 from rag_ingest.exceptions import EmbeddingError
 from rag_ingest.ingester import Ingester, RunResult
@@ -137,9 +137,7 @@ def test_embed_failure_first_source_fails_remaining_two_succeed() -> None:
         Item(id="third", payload="ok"),
     ]
     sink = StubVectorSink()
-    result = _make_ingester(
-        StubSource(items=items), embedder=_FirstFailEmbedder(), sink=sink
-    ).run()
+    result = _make_ingester(StubSource(items=items), embedder=_FirstFailEmbedder(), sink=sink).run()
 
     assert len(result.failures) == 1
     assert result.failures[0]["source_uri"] == "first"

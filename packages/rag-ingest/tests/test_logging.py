@@ -1,9 +1,10 @@
 """Logging tests: AC-009 (structured log + PII 非出力)."""
+
 from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -39,49 +40,44 @@ class _LLMIngester(Ingester):
 
 
 def test_embed_log_tokens_in(caplog: pytest.LogCaptureFixture) -> None:
-    with patch(_PATCH, return_value=_mock_resp(tokens=100)):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester().run()
+    with patch(_PATCH, return_value=_mock_resp(tokens=100)), caplog.at_level(logging.INFO):
+        _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "tokens_in")]
     assert records, "expected at least one embed_completed record"
-    assert getattr(records[0], "tokens_in") == 100
+    assert cast(Any, records[0]).tokens_in == 100
 
 
 def test_embed_log_latency_ms_non_negative(caplog: pytest.LogCaptureFixture) -> None:
-    with patch(_PATCH, return_value=_mock_resp()):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester().run()
+    with patch(_PATCH, return_value=_mock_resp()), caplog.at_level(logging.INFO):
+        _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "latency_ms")]
     assert records
-    assert getattr(records[0], "latency_ms") >= 0
+    assert cast(Any, records[0]).latency_ms >= 0
 
 
 def test_embed_log_provider(caplog: pytest.LogCaptureFixture) -> None:
-    with patch(_PATCH, return_value=_mock_resp()):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester().run()
+    with patch(_PATCH, return_value=_mock_resp()), caplog.at_level(logging.INFO):
+        _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "provider")]
     assert records
-    assert getattr(records[0], "provider") == "voyage"
+    assert cast(Any, records[0]).provider == "voyage"
 
 
 def test_embed_log_model(caplog: pytest.LogCaptureFixture) -> None:
-    with patch(_PATCH, return_value=_mock_resp()):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester().run()
+    with patch(_PATCH, return_value=_mock_resp()), caplog.at_level(logging.INFO):
+        _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "model")]
     assert records
-    assert getattr(records[0], "model") == "voyage-3"
+    assert cast(Any, records[0]).model == "voyage-3"
 
 
 def test_embed_log_chunk_count(caplog: pytest.LogCaptureFixture) -> None:
-    with patch(_PATCH, return_value=_mock_resp()):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester().run()
+    with patch(_PATCH, return_value=_mock_resp()), caplog.at_level(logging.INFO):
+        _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "chunk_count")]
     assert records
     # StubChunker returns 1 chunk per item
-    assert getattr(records[0], "chunk_count") == 1
+    assert cast(Any, records[0]).chunk_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -91,17 +87,15 @@ def test_embed_log_chunk_count(caplog: pytest.LogCaptureFixture) -> None:
 
 def test_embed_log_no_pii_in_caplog_text(caplog: pytest.LogCaptureFixture) -> None:
     pii = "alice@example.com"
-    with patch(_PATCH, return_value=_mock_resp()):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester(pii_text=pii).run()
+    with patch(_PATCH, return_value=_mock_resp()), caplog.at_level(logging.INFO):
+        _LLMIngester(pii_text=pii).run()
     assert pii not in caplog.text
 
 
 def test_embed_log_no_pii_in_any_record_message(caplog: pytest.LogCaptureFixture) -> None:
     pii = "alice@example.com"
-    with patch(_PATCH, return_value=_mock_resp()):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester(pii_text=pii).run()
+    with patch(_PATCH, return_value=_mock_resp()), caplog.at_level(logging.INFO):
+        _LLMIngester(pii_text=pii).run()
     for record in caplog.records:
         assert pii not in record.getMessage()
 
@@ -223,9 +217,8 @@ def test_setup_logging_idempotent_does_not_add_second_handler() -> None:
 
 def test_embed_log_tokens_in_zero_when_usage_absent(caplog: pytest.LogCaptureFixture) -> None:
     mock_no_usage: dict[str, Any] = {"data": [{"embedding": [0.0] * 4}]}
-    with patch(_PATCH, return_value=mock_no_usage):
-        with caplog.at_level(logging.INFO):
-            _LLMIngester().run()
+    with patch(_PATCH, return_value=mock_no_usage), caplog.at_level(logging.INFO):
+        _LLMIngester().run()
     records = [r for r in caplog.records if hasattr(r, "tokens_in")]
     assert records
-    assert getattr(records[0], "tokens_in") == 0
+    assert cast(Any, records[0]).tokens_in == 0

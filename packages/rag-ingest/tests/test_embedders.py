@@ -1,4 +1,5 @@
 """AC-004 / AC-004b / AC-R-001: LLMEmbedder — batch split, required args, failure handling."""
+
 from __future__ import annotations
 
 from typing import Any

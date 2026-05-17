@@ -6,7 +6,7 @@ requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 readme = "README.md"
-authors = [{ name = "Koki Nakamura" }]
+authors = [{ name = "Koki NAKAMURA" }]
 keywords = ["source", "extractor", "protocol", "digestkit"]
 classifiers = [
     "Programming Language :: Python :: 3",

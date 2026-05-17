@@ -1,0 +1,41 @@
+name: rag-ingest CI
+
+on:
+  pull_request:
+    paths: ["packages/rag-ingest/**"]
+  push:
+    branches: [main]
+    paths: ["packages/rag-ingest/**"]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.13"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --all-packages --all-extras
+      - name: pyright
+        run: uv run --package rag-ingest pyright packages/rag-ingest/src
+      - name: ruff
+        run: |
+          uv run ruff check packages/rag-ingest
+          uv run ruff format --check packages/rag-ingest
+      - name: pytest
+        run: >-
+          uv run --package rag-ingest pytest
+          packages/rag-ingest/tests -v
+          -m 'not demonstration and not needs_network'

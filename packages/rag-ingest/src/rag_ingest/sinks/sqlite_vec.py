@@ -10,6 +10,11 @@ from rag_ingest._upstream import Item
 from rag_ingest.exceptions import SqliteVecLoadError
 from rag_ingest.types import Chunk, IngestContext, Vector
 
+_LOAD_ERROR_HINT = (
+    "Install sqlite-vec with: pip install sqlite-vec\n"
+    "On Linux/macOS, ensure your SQLite was compiled with extension support enabled."
+)
+
 
 class SQLiteVecSink:
     def __init__(
@@ -26,11 +31,18 @@ class SQLiteVecSink:
         self._load_extension()
 
     def _load_extension(self) -> None:
-        self._conn.enable_load_extension(True)
+        try:
+            self._conn.enable_load_extension(True)
+        except Exception as exc:
+            raise SqliteVecLoadError(
+                f"Failed to enable SQLite extension loading: {exc}\n{_LOAD_ERROR_HINT}"
+            ) from exc
         try:
             sqlite_vec.load(self._conn)
         except Exception as exc:
-            raise SqliteVecLoadError(str(exc)) from exc
+            raise SqliteVecLoadError(
+                f"Failed to load sqlite-vec extension: {exc}\n{_LOAD_ERROR_HINT}"
+            ) from exc
         finally:
             self._conn.enable_load_extension(False)
 

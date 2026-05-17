@@ -10,6 +10,7 @@ dependencies = [
     "tiktoken>=0.7,<1",
     "sqlite-vec>=0.1,<0.2",
     "python-dotenv",
+    "click>=8",
 ]
 
 [tool.uv.sources]

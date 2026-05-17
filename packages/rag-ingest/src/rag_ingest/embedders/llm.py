@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 import litellm
@@ -10,6 +12,22 @@ from rag_ingest.types import Chunk, Vector
 # litellm.embedding has partially-unknown overload types; getattr returns Any,
 # avoiding reportUnknownMemberType in pyright strict mode.
 _litellm_embedding: Any = getattr(litellm, "embedding")
+
+_logger = logging.getLogger(__name__)
+
+
+def _extract_prompt_tokens(result: Any) -> int:
+    """Safely extract prompt_tokens from a litellm response (dict or object)."""
+    usage: Any = None
+    if hasattr(result, "get"):
+        usage = result.get("usage")
+    if usage is None and hasattr(result, "usage"):
+        usage = result.usage
+    if isinstance(usage, dict):
+        return int(usage.get("prompt_tokens", 0) or 0)
+    if usage is not None:
+        return int(getattr(usage, "prompt_tokens", 0) or 0)
+    return 0
 
 
 class LLMEmbedder:
@@ -45,17 +63,29 @@ class LLMEmbedder:
                 extra: dict[str, Any] = {}
                 if self._timeout is not None:
                     extra["timeout"] = self._timeout
+                t0 = time.monotonic()
                 result: Any = _litellm_embedding(
                     model=f"{self._provider}/{self._model}",
                     input=[c.text for c in batch],
                     **extra,
                 )
+                latency_ms = (time.monotonic() - t0) * 1000
                 batch_vectors: list[Vector] = [
                     [float(v) for v in item["embedding"]] for item in result["data"]
                 ]
                 if self._dim is None and batch_vectors:
                     self._dim = len(batch_vectors[0])
                 vectors.extend(batch_vectors)
+                _logger.info(
+                    "embed_completed",
+                    extra={
+                        "tokens_in": _extract_prompt_tokens(result),
+                        "latency_ms": round(latency_ms, 2),
+                        "provider": self._provider,
+                        "model": self._model,
+                        "chunk_count": len(batch),
+                    },
+                )
             except Exception:
                 failed_indices.extend(range(batch_start, batch_start + len(batch)))
 

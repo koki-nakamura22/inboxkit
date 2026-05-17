@@ -140,6 +140,17 @@ def _write_no_subclass(tmp_path: Path) -> Path:
     return p
 
 
+def _write_no_attrs_subclass(tmp_path: Path) -> Path:
+    """Module with Ingester subclass that has no required attrs (→ ConfigurationError)."""
+    code = _STUB_CLASSES + """\
+class MyIngester(Ingester):
+    pass  # no source/extractor/chunker/embedder/sink → ConfigurationError
+"""
+    p = tmp_path / "my_ingester.py"
+    p.write_text(code)
+    return p
+
+
 def _write_multi_subclass(tmp_path: Path) -> Path:
     code = _STUB_CLASSES + """\
 class IngesterA(Ingester):
@@ -209,9 +220,9 @@ def test_cli_run_basic_chunks_in_summary(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_run_all_success_exit_0(tmp_path: Path) -> None:
-    result = CliRunner().invoke(cli, ["run", str(_write_basic(tmp_path))])
-    assert result.exit_code == 0
+def test_cli_run_configuration_error_exit_3(tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli, ["run", str(_write_no_attrs_subclass(tmp_path))])
+    assert result.exit_code == 3
 
 
 def test_cli_run_partial_failure_exit_1(tmp_path: Path) -> None:
@@ -267,17 +278,18 @@ def test_cli_dry_run_no_chunks_written(tmp_path: Path) -> None:
     assert "chunks=0" in result.output
 
 
-def test_cli_force_bypasses_dedup(tmp_path: Path) -> None:
-    path = _write_preloaded(tmp_path)
-    # Without force: 2 items skipped (pre-existing URIs), 1 processed
-    r_no_force = CliRunner().invoke(cli, ["run", str(path)])
-    assert "processed=1" in r_no_force.output
-    assert "skipped=2" in r_no_force.output
+def test_cli_without_force_skips_existing_uris(tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli, ["run", str(_write_preloaded(tmp_path))])
+    assert result.exit_code == 0
+    assert "processed=1" in result.output
+    assert "skipped=2" in result.output
 
-    # With force: all 3 items processed
-    r_force = CliRunner().invoke(cli, ["run", str(path), "--force"])
-    assert "processed=3" in r_force.output
-    assert "skipped=0" in r_force.output
+
+def test_cli_force_processes_all_despite_existing_uris(tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli, ["run", str(_write_preloaded(tmp_path)), "--force"])
+    assert result.exit_code == 0
+    assert "processed=3" in result.output
+    assert "skipped=0" in result.output
 
 
 def test_cli_limit_restricts_items(tmp_path: Path) -> None:
@@ -290,3 +302,9 @@ def test_cli_limit_zero_processes_nothing(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["run", str(_write_basic(tmp_path)), "--limit", "0"])
     assert result.exit_code == 0
     assert "processed=0" in result.output
+
+
+def test_cli_limit_larger_than_item_count_processes_all(tmp_path: Path) -> None:
+    result = CliRunner().invoke(cli, ["run", str(_write_basic(tmp_path, n=3)), "--limit", "100"])
+    assert result.exit_code == 0
+    assert "processed=3" in result.output

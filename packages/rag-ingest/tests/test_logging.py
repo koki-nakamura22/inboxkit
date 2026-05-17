@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 from unittest.mock import patch
 
@@ -12,7 +13,7 @@ from conftest import StubChunker, StubExtractor, StubSource, StubVectorSink
 from rag_ingest._upstream import Item
 from rag_ingest.embedders.llm import LLMEmbedder
 from rag_ingest.ingester import Ingester
-from rag_ingest.logging import JsonFormatter
+from rag_ingest.logging import JsonFormatter, setup_logging
 
 _PATCH = "rag_ingest.embedders.llm._litellm_embedding"
 
@@ -47,7 +48,7 @@ def test_embed_log_tokens_in(caplog: pytest.LogCaptureFixture) -> None:
     assert records[0].tokens_in == 100
 
 
-def test_embed_log_latency_ms_positive(caplog: pytest.LogCaptureFixture) -> None:
+def test_embed_log_latency_ms_non_negative(caplog: pytest.LogCaptureFixture) -> None:
     with patch(_PATCH, return_value=_mock_resp()):
         with caplog.at_level(logging.INFO):
             _LLMIngester().run()
@@ -156,6 +157,69 @@ def test_json_formatter_output_is_valid_json() -> None:
 # ---------------------------------------------------------------------------
 # usage token extraction: missing usage key → tokens_in = 0
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# setup_logging()
+# ---------------------------------------------------------------------------
+
+
+def test_setup_logging_adds_handler_when_none_configured() -> None:
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_level = root.level
+    try:
+        root.handlers = []
+        setup_logging()
+        assert len(root.handlers) == 1
+    finally:
+        root.handlers = original_handlers
+        root.setLevel(original_level)
+
+
+def test_setup_logging_json_format_uses_json_formatter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_INGEST_LOG_FORMAT", "json")
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_level = root.level
+    try:
+        root.handlers = []
+        setup_logging()
+        assert len(root.handlers) == 1
+        assert isinstance(root.handlers[0].formatter, JsonFormatter)
+    finally:
+        root.handlers = original_handlers
+        root.setLevel(original_level)
+        monkeypatch.delenv("RAG_INGEST_LOG_FORMAT", raising=False)
+
+
+def test_setup_logging_text_format_uses_standard_formatter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RAG_INGEST_LOG_FORMAT", raising=False)
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_level = root.level
+    try:
+        root.handlers = []
+        setup_logging()
+        assert len(root.handlers) == 1
+        assert not isinstance(root.handlers[0].formatter, JsonFormatter)
+    finally:
+        root.handlers = original_handlers
+        root.setLevel(original_level)
+
+
+def test_setup_logging_idempotent_does_not_add_second_handler() -> None:
+    root = logging.getLogger()
+    original_handlers = root.handlers[:]
+    original_level = root.level
+    try:
+        root.handlers = []
+        setup_logging()
+        setup_logging()
+        assert len(root.handlers) == 1
+    finally:
+        root.handlers = original_handlers
+        root.setLevel(original_level)
 
 
 def test_embed_log_tokens_in_zero_when_usage_absent(caplog: pytest.LogCaptureFixture) -> None:

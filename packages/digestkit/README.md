@@ -231,16 +231,30 @@ host future packages for RAG ingestion and personal knowledge bases.
 
 ## Optional Dependencies
 
-| Extra    | Packages           | Use case                       |
-|----------|--------------------|--------------------------------|
-| `pdf`    | pypdf              | Extract text from PDF files    |
-| `web`    | trafilatura, httpx | Fetch and extract web articles |
-| `notion` | notion-client      | Fetch pages from Notion        |
-| `slack`  | httpx              | Fetch messages from Slack      |
-| `email`  | —                  | Fetch emails (IMAP/SMTP)       |
-| `all`    | all of the above   | Install everything             |
+| Extra       | Packages           | Use case                                     |
+|-------------|--------------------|----------------------------------------------|
+| `pdf`       | pypdfium2          | Extract text from PDF files                  |
+| `pdf-pypdf` | pypdf              | Legacy PDF engine (`PDFExtractor("pypdf")`)  |
+| `web`       | trafilatura, httpx | Fetch and extract web articles               |
+| `notion`    | notion-client      | Fetch pages from Notion                      |
+| `slack`     | httpx              | Fetch messages from Slack                    |
+| `email`     | —                  | Fetch emails (IMAP/SMTP)                     |
+| `all`       | all of the above   | Install everything                           |
 
 Install any extra with `pip install digestkit[<extra>]`.
+
+### PDF engines
+
+`PDFExtractor` defaults to **pypdfium2** (PDFium). pypdf, the previous default, cannot map
+CID fonts embedded with `/Encoding /Identity-H` + Adobe-Japan1 ordering when the font has no
+`ToUnicode` CMap — common in commercially published Japanese PDFs. In that case it returns
+**mojibake without raising**, so the pipeline happily feeds garbage to the summarizer
+([#55](https://github.com/koki-nakamura22/inboxkit/issues/55)).
+
+```python
+PDFExtractor()                    # pypdfium2 (default)
+PDFExtractor(engine="pypdf")      # opt back in — requires the `pdf-pypdf` extra
+```
 
 ## Contributing
 

@@ -23,7 +23,7 @@ notification dependencies so it stays usable across both consumers.
 | `digestkit_core.types`                       | `Item`, `Digest`, `DigestkitError`, `FailureInfo`, ...    |
 | `digestkit_core.sources.local_directory`     | `LocalDirectorySource` (filesystem glob)                  |
 | `digestkit_core.sources.notion_database`     | `NotionDatabaseSource` (Notion DB query + ack callbacks)  |
-| `digestkit_core.extractors.pdf`              | `PDFExtractor` + `ExtractionError`                        |
+| `digestkit_core.extractors.pdf`              | `PDFExtractor` (pypdfium2 by default, `engine="pypdf"` to opt out) + `ExtractionError` |
 | `digestkit_core.extractors.webpage`          | `WebPageExtractor` (httpx + trafilatura)                  |
 
 ## Installation

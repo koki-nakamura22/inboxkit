@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "digestkit-core>=0.1,<0.2",
+    "digestkit-core>=0.2,<0.3",
     "litellm>=1.50,<2",
     "tiktoken>=0.7,<1",
     "sqlite-vec>=0.1,<0.2",

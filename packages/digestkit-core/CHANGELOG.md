@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-09
+
+### Changed
+
+- **`PDFExtractor` now uses pypdfium2 (PDFium) by default instead of pypdf**
+  ([#55](https://github.com/koki-nakamura22/inboxkit/issues/55)). pypdf cannot map
+  CID fonts embedded with `/Encoding /Identity-H` + Adobe-Japan1 ordering when the
+  font carries no `ToUnicode` CMap, which is common in commercially published
+  Japanese PDFs. It returns mojibake **without raising**, so the pipeline reports
+  success and the summarizer is fed unreadable text.
+- **The `pdf` extra now installs `pypdfium2` instead of `pypdf`.** Environments that
+  install `digestkit-core[pdf]` pick up the new engine automatically; those pinning
+  `pypdf` directly must switch to the new `pdf-pypdf` extra.
+
+### Added
+
+- `PDFExtractor(engine=...)` — `"pypdfium2"` (default) or `"pypdf"`. An unknown
+  engine name raises `ValueError` at construction time.
+- `PDFExtractor.engine` property exposing the resolved engine.
+- `digestkit_core.extractors.pdf.PDFEngine` / `DEFAULT_ENGINE` for callers that want
+  to reference the engine names symbolically.
+- New `pdf-pypdf` extra (`pypdf>=4`) for opting back into the previous engine.
+- Missing-engine imports now raise `ExtractionError` naming the extra to install,
+  instead of a bare `ImportError`.
+
 ## [0.1.0] — 2026-05-17
 
 Initial release. Extracted from `digestkit` during Phase 2c of the
@@ -60,5 +85,6 @@ provider SDKs), vector stores (`sqlite-vec`, ...), notification systems
 - `is` identity is preserved between `digestkit_core.X` and `digestkit.X`
   (verified by `packages/digestkit/tests/test_public_api_compat.py`)
 
-[Unreleased]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-core-v0.1.0...HEAD
+[Unreleased]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-core-v0.2.0...HEAD
+[0.2.0]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-core-v0.1.0...digestkit-core-v0.2.0
 [0.1.0]: https://github.com/koki-nakamura22/inboxkit/releases/tag/digestkit-core-v0.1.0

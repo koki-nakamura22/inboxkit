@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -8,6 +9,48 @@ import pytest
 
 from rag_ingest._upstream import Item
 from rag_ingest.types import Chunk, IngestContext, Vector
+
+_NO_LOADABLE_EXTENSIONS = (
+    "interpreter was built without --enable-loadable-sqlite-extensions, "
+    "so sqlite-vec cannot be loaded (python.org / GitHub macOS builds)"
+)
+
+
+def _supports_loadable_extensions() -> bool:
+    """Whether this interpreter's sqlite3 can load extensions at all.
+
+    CPython disables loadable SQLite extensions unless configured with
+    `--enable-loadable-sqlite-extensions`; the python.org macOS framework
+    builds (which `actions/setup-python` installs) leave it off, so
+    `sqlite3.Connection` has no `enable_load_extension` attribute there.
+    """
+    if not hasattr(sqlite3.Connection, "enable_load_extension"):
+        return False
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.enable_load_extension(True)
+    except (AttributeError, sqlite3.Error):
+        return False
+    else:
+        return True
+    finally:
+        conn.close()
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Skip `needs_sqlite_vec` tests when the interpreter cannot load extensions.
+
+    The marker already existed and was applied throughout the suite, but nothing
+    ever acted on it, so these tests failed instead of being skipped on such
+    interpreters. `-ra` keeps the skip reason visible in the summary rather than
+    letting the lost coverage pass unnoticed.
+    """
+    if _supports_loadable_extensions():
+        return
+    skip = pytest.mark.skip(reason=_NO_LOADABLE_EXTENSIONS)
+    for item in items:
+        if "needs_sqlite_vec" in item.keywords:
+            item.add_marker(skip)
 
 
 @dataclass

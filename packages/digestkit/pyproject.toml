@@ -1,6 +1,6 @@
 [project]
 name = "digestkit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Personal content digester framework: fetch → extract → LLM summarize → sink"
 requires-python = ">=3.11,<3.14"
 license = "Apache-2.0"
@@ -19,20 +19,21 @@ classifiers = [
 ]
 
 dependencies = [
-    "digestkit-core>=0.1,<0.2",
+    "digestkit-core>=0.2,<0.3",
     "litellm>=1.50,<2",
     "python-dotenv>=1",
 ]
 
 [project.optional-dependencies]
-pdf = ["pypdf>=4"]
+pdf = ["pypdfium2>=4"]
+pdf-pypdf = ["pypdf>=4"]
 web = ["trafilatura>=1.12", "httpx>=0.27"]
 notion = [
     "notion-client>=2",
 ]
 slack = ["httpx>=0.27"]
 email = []
-all = ["digestkit[pdf,web,notion,slack,email]"]
+all = ["digestkit[pdf,pdf-pypdf,web,notion,slack,email]"]
 
 [project.scripts]
 digestkit = "digestkit.cli:main"

@@ -129,7 +129,7 @@ you want both outputs.
 
 The base install pulls in everything required to run the full pipeline
 (`litellm`, `tiktoken`, `sqlite-vec`, `python-dotenv`, `click`). `digestkit-core`
-brings the source/extractor SDKs (`pypdf`, `trafilatura`, `notion-client`).
+brings the source/extractor SDKs (`pypdfium2`, `trafilatura`, `notion-client`).
 
 ## Contributing
 

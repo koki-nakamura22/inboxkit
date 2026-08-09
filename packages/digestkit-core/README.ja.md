@@ -19,28 +19,31 @@
 | `digestkit_core.types`                       | `Item` / `Digest` / `DigestkitError` / `FailureInfo` ほか |
 | `digestkit_core.sources.local_directory`     | `LocalDirectorySource` (ファイルシステム glob)            |
 | `digestkit_core.sources.notion_database`     | `NotionDatabaseSource` (Notion DB query + ack callback)   |
-| `digestkit_core.extractors.pdf`              | `PDFExtractor` + `ExtractionError`                        |
+| `digestkit_core.extractors.pdf`              | `PDFExtractor` (既定 pypdfium2 / `engine="pypdf"` でオプトアウト) + `ExtractionError` |
 | `digestkit_core.extractors.webpage`          | `WebPageExtractor` (httpx + trafilatura)                  |
 
 ## インストール
 
-> **Note**: digestkit-core はまだ PyPI に publish されていません。初回リリースまでは umbrella リポジトリの `main` ブランチから git URL 経由でインストールしてください。
-
 ```bash
-pip install "digestkit-core @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit-core"
+pip install digestkit-core
 ```
 
 [uv](https://docs.astral.sh/uv/) プロジェクトの場合:
 
 ```toml
 [project]
-dependencies = ["digestkit-core>=0.1,<0.2"]
-
-[tool.uv.sources]
-digestkit-core = { git = "https://github.com/koki-nakamura22/inboxkit.git", subdirectory = "packages/digestkit-core", branch = "main" }
+dependencies = ["digestkit-core>=0.2,<0.3"]
 ```
 
 通常エンドユーザーが `digestkit-core` に直接依存することはありません。`digestkit` または `rag-ingest` を install すれば依存解決で自動的に入ります。
+
+### git から (未リリースの変更を使う場合)
+
+リリース前の `main` を追いたい場合:
+
+```bash
+pip install "digestkit-core @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit-core"
+```
 
 ## 中立性契約
 

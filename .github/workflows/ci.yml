@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, develop, "feature/**"]
   pull_request:
 
 jobs:
@@ -44,13 +44,29 @@ jobs:
           - os: macos-latest
             python: "3.13"
     runs-on: ${{ matrix.os }}
+    # `astral-sh/setup-uv@v3` は `python-version` 入力を持たない (指定しても
+    # "Unexpected input" 警告を出して無視する)。そのため以前は matrix の宣言に
+    # 関わらず uv がランナー既定の Python を拾っており、ubuntu 3.11 / 3.12 / 3.13
+    # の 3 ジョブが揃って 3.12.3 を実行していた (= DR-0002 の matrix が空振り)。
+    # インタプリタは actions/setup-python で固定し、uv にはそれを使わせる。
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+      # 取得できなかった時に別バージョンを黙ってダウンロードさせない
+      # (バージョン食い違いを再び隠さないため)。
+      UV_PYTHON_DOWNLOADS: never
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v3
       # workspace member (digestkit) + 全 extras (pdf/web/notion/slack/email) を
       # インストールしないと、import や型解決が通らないため `--all-packages
       # --all-extras` を付与。
       - run: uv sync --all-packages --all-extras
+      - name: Assert the interpreter matches the matrix entry
+        run: |
+          uv run python -c "import sys; v='%d.%d' % sys.version_info[:2]; \
+          assert v == '${{ matrix.python }}', f'expected ${{ matrix.python }}, got {v}'; \
+          print('python', sys.version)"
       - run: uv run pytest packages/digestkit/tests -m "not demonstration and not needs_network" --cov --cov-fail-under=80

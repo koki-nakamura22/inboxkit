@@ -13,8 +13,8 @@ version = "0.0.0"
 description = "umbrella workspace for digestkit / digestkit-core / rag-ingest / personal-rag"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "digestkit-core[pdf,web,notion]",
-    "digestkit[pdf,web,notion]",
+    "digestkit-core[pdf,pdf-pypdf,web,notion]",
+    "digestkit[pdf,pdf-pypdf,web,notion]",
     "rag-ingest",
 ]
 
@@ -45,6 +45,7 @@ markers = [
     "demonstration: 開発者の目視確認が必要 (実 LLM / 実 PDF / 別マシン)",
     "needs_network: 実ネットワーク必須 (CI でのみ実行、ralph-loop ではスキップ)",
     "slow: 1 ケース ≥ 1 秒",
+    "needs_sqlite_vec: sqlite-vec 拡張ロードが必要 (rag-ingest)",
 ]
 
 # ============================

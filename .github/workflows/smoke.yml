@@ -16,7 +16,7 @@ name: Smoke (extras matrix)
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, develop, "feature/**"]
   pull_request:
 
 jobs:
@@ -35,6 +35,16 @@ jobs:
             check: |
               from digestkit.extractors import PDFExtractor  # noqa: F401
               from digestkit.sources import LocalDirectorySource  # noqa: F401
+              # Issue #55: `pdf` extra だけで既定エンジン (pypdfium2) が使えること
+              assert PDFExtractor().engine == "pypdfium2"
+              import pypdfium2  # noqa: F401
+          - name: pdf-pypdf
+            extras: "[pdf-pypdf]"
+            check: |
+              from digestkit.extractors import PDFExtractor  # noqa: F401
+              # Issue #55: 旧エンジンへのオプトアウト経路
+              assert PDFExtractor(engine="pypdf").engine == "pypdf"
+              import pypdf  # noqa: F401
           - name: web
             extras: "[web]"
             check: |

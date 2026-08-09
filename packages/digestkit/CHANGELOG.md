@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-09
+
 ### Changed
 
 - **`PDFExtractor` now uses pypdfium2 (PDFium) by default instead of pypdf**
@@ -17,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The `pdf` extra now installs `pypdfium2` instead of `pypdf`.** Use the new
   `pdf-pypdf` extra together with `PDFExtractor(engine="pypdf")` to keep the old
   behaviour.
+- Requires `digestkit-core>=0.2,<0.3` (was `>=0.1,<0.2`), since the engine switch
+  lives in core.
 
 ### Added
 
@@ -94,5 +98,6 @@ the four protocol-driven layers.
 - [ADR-0004](../../docs/adr/0004-monorepo-publish-strategy.md) — monorepo
   publish strategy (tag prefix, independent versions, staged rollout)
 
-[Unreleased]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-v0.1.0...HEAD
+[Unreleased]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-v0.2.0...HEAD
+[0.2.0]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-v0.1.0...digestkit-v0.2.0
 [0.1.0]: https://github.com/koki-nakamura22/inboxkit/releases/tag/digestkit-v0.1.0

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-09
+
 ### Changed
 
 - **`PDFExtractor` now uses pypdfium2 (PDFium) by default instead of pypdf**
@@ -83,5 +85,6 @@ provider SDKs), vector stores (`sqlite-vec`, ...), notification systems
 - `is` identity is preserved between `digestkit_core.X` and `digestkit.X`
   (verified by `packages/digestkit/tests/test_public_api_compat.py`)
 
-[Unreleased]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-core-v0.1.0...HEAD
+[Unreleased]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-core-v0.2.0...HEAD
+[0.2.0]: https://github.com/koki-nakamura22/inboxkit/compare/digestkit-core-v0.1.0...digestkit-core-v0.2.0
 [0.1.0]: https://github.com/koki-nakamura22/inboxkit/releases/tag/digestkit-core-v0.1.0

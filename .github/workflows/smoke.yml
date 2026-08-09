@@ -16,7 +16,7 @@ name: Smoke (extras matrix)
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, develop, "feature/**"]
   pull_request:
 
 jobs:

@@ -19,7 +19,7 @@
 | `digestkit_core.types`                       | `Item` / `Digest` / `DigestkitError` / `FailureInfo` ほか |
 | `digestkit_core.sources.local_directory`     | `LocalDirectorySource` (ファイルシステム glob)            |
 | `digestkit_core.sources.notion_database`     | `NotionDatabaseSource` (Notion DB query + ack callback)   |
-| `digestkit_core.extractors.pdf`              | `PDFExtractor` + `ExtractionError`                        |
+| `digestkit_core.extractors.pdf`              | `PDFExtractor` (既定 pypdfium2 / `engine="pypdf"` でオプトアウト) + `ExtractionError` |
 | `digestkit_core.extractors.webpage`          | `WebPageExtractor` (httpx + trafilatura)                  |
 
 ## インストール

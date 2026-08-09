@@ -113,7 +113,7 @@ rag-ingest run my_ingester.py
 
 ## オプション依存
 
-base install で完全なパイプラインに必要なものはすべて入ります (`litellm` / `tiktoken` / `sqlite-vec` / `python-dotenv` / `click`)。Source / Extractor 用の SDK (`pypdf` / `trafilatura` / `notion-client`) は `digestkit-core` から推移的に入ります。
+base install で完全なパイプラインに必要なものはすべて入ります (`litellm` / `tiktoken` / `sqlite-vec` / `python-dotenv` / `click`)。Source / Extractor 用の SDK (`pypdfium2` / `trafilatura` / `notion-client`) は `digestkit-core` から推移的に入ります。
 
 ## コントリビュート
 

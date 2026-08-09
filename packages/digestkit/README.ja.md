@@ -200,16 +200,30 @@ digestkit は [inboxkit](https://github.com/koki-nakamura22/inboxkit) umbrella m
 
 ## オプション依存 (extras)
 
-| Extra    | パッケージ         | 用途                                  |
-| -------- | ------------------ | ------------------------------------- |
-| `pdf`    | pypdf              | PDF ファイルからのテキスト抽出        |
-| `web`    | trafilatura, httpx | Web 記事の取得 + 抽出                 |
-| `notion` | notion-client      | Notion からのページ取得               |
-| `slack`  | httpx              | Slack からのメッセージ取得            |
-| `email`  | —                  | メール (IMAP/SMTP) からの取得         |
-| `all`    | 上記すべて         | すべて install                        |
+| Extra       | パッケージ         | 用途                                          |
+| ----------- | ------------------ | --------------------------------------------- |
+| `pdf`       | pypdfium2          | PDF ファイルからのテキスト抽出                |
+| `pdf-pypdf` | pypdf              | 旧 PDF エンジン (`PDFExtractor("pypdf")` 用)  |
+| `web`       | trafilatura, httpx | Web 記事の取得 + 抽出                         |
+| `notion`    | notion-client      | Notion からのページ取得                       |
+| `slack`     | httpx              | Slack からのメッセージ取得                    |
+| `email`     | —                  | メール (IMAP/SMTP) からの取得                 |
+| `all`       | 上記すべて         | すべて install                                |
 
 `pip install digestkit[<extra>]` で任意の extra を install できます。
+
+### PDF エンジン
+
+`PDFExtractor` の既定は **pypdfium2** (PDFium) です。従来の既定だった pypdf は、`ToUnicode`
+CMap を持たないフォントについて `/Encoding /Identity-H` + Adobe-Japan1 ordering の CID
+フォントを変換できません (商業出版の日本語 PDF に多い)。この場合 pypdf は**例外を出さずに**
+文字化けテキストを返すため、要約器に意味不明なテキストが渡ったまま処理が成功扱いで進みます
+([#55](https://github.com/koki-nakamura22/inboxkit/issues/55))。
+
+```python
+PDFExtractor()                    # pypdfium2 (既定)
+PDFExtractor(engine="pypdf")      # 旧挙動へオプトイン — `pdf-pypdf` extra が必要
+```
 
 ## コントリビュート
 

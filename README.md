@@ -14,9 +14,9 @@ Each package is independently installable and useful on its own; the umbrella ex
 
 | Package | Role | Phase | Status |
 |---|---|---|---|
-| [digestkit](./packages/digestkit) | 1:1 pipeline: fetch → extract → LLM summarize → sink | Phase 1 | In progress (pre-PyPI) |
-| digestkit-core | Shared `Source` / `Extractor` abstractions, extracted once a second consumer (`rag-ingest`) needs them | Phase 2 | Not started |
-| rag-ingest | 1:N pipeline: fetch → extract → chunk → embed → vector store | Phase 2 | Not started |
+| [digestkit](./packages/digestkit) | 1:1 pipeline: fetch → extract → LLM summarize → sink | Phase 1 | Released on PyPI |
+| [digestkit-core](./packages/digestkit-core) | Shared `Source` / `Extractor` abstractions, extracted once a second consumer (`rag-ingest`) needed them | Phase 2 | Released on PyPI |
+| [rag-ingest](./packages/rag-ingest) | 1:N pipeline: fetch → extract → chunk → embed → vector store | Phase 2 | Implemented, not yet published |
 | personal-rag | SQLite + sqlite-vec store + MCP server so AI coding agents can query the personal corpus | Phase 3 | Not started |
 
 Naming note: the umbrella repo is `inboxkit` but the Phase 1 PyPI package is `digestkit`. Background and rationale live in [packages/digestkit/README.md](./packages/digestkit/README.md) and the project PRD.

@@ -11,18 +11,24 @@
 
 ## インストール
 
-> **Note**: digestkit はまだ PyPI に publish されていません。初回リリースまでは umbrella リポジトリの `main` ブランチから git URL 経由で install してください。
-
-### git から (現状)
-
 ```bash
-pip install "digestkit @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit"
+pip install digestkit
 ```
 
 extras 付きの場合:
 
 ```bash
-pip install "digestkit[pdf,notion] @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit"
+pip install "digestkit[pdf,notion]"
+```
+
+各 extra の中身は[オプション依存 (extras)](#オプション依存-extras) を参照してください。
+
+### git から (未リリースの変更を使う場合)
+
+リリース前の `main` を追いたい場合:
+
+```bash
+pip install "digestkit @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit"
 ```
 
 [uv](https://docs.astral.sh/uv/) プロジェクトでは `[tool.uv.sources]` で宣言:
@@ -36,17 +42,6 @@ digestkit = { git = "https://github.com/koki-nakamura22/inboxkit.git", subdirect
 ```
 
 再現性のために特定 commit に pin したい場合は `branch = "main"` を `rev = "<sha>"` に置き換えてください。
-
-### PyPI から (予定)
-
-`digestkit` が publish された後の標準的な install 方法:
-
-```bash
-pip install digestkit
-pip install digestkit[pdf,notion]
-```
-
-トラッキング Issue: [#3](https://github.com/koki-nakamura22/inboxkit/issues/3)
 
 ## Quickstart
 

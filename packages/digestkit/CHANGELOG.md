@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`PDFExtractor` now uses pypdfium2 (PDFium) by default instead of pypdf**
+  ([#55](https://github.com/koki-nakamura22/inboxkit/issues/55)). pypdf silently
+  returned mojibake for Japanese PDFs whose CID fonts use `/Encoding /Identity-H` +
+  Adobe-Japan1 ordering without a `ToUnicode` CMap, so `Digester` treated the item
+  as extracted successfully and handed unreadable text to the summarizer.
+- **The `pdf` extra now installs `pypdfium2` instead of `pypdf`.** Use the new
+  `pdf-pypdf` extra together with `PDFExtractor(engine="pypdf")` to keep the old
+  behaviour.
+
+### Added
+
+- `PDFExtractor(engine="pypdfium2" | "pypdf")` (re-exported from `digestkit-core`).
+- New `pdf-pypdf` extra (`pypdf>=4`).
+
 ## [0.1.0] — 2026-05-17
 
 Initial PyPI release of `digestkit`, the Phase 1 component of the

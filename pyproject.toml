@@ -13,8 +13,8 @@ version = "0.0.0"
 description = "umbrella workspace for digestkit / digestkit-core / rag-ingest / personal-rag"
 requires-python = ">=3.11,<3.14"
 dependencies = [
-    "digestkit-core[pdf,web,notion]",
-    "digestkit[pdf,web,notion]",
+    "digestkit-core[pdf,pdf-pypdf,web,notion]",
+    "digestkit[pdf,pdf-pypdf,web,notion]",
     "rag-ingest",
 ]
 

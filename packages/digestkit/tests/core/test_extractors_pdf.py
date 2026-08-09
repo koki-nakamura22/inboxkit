@@ -85,6 +85,30 @@ def test_pdf_extractor_returns_empty_string_for_pdf_with_no_text(tmp_path: Path)
     assert result.strip() == ""
 
 
+@pytest.mark.slow
+def test_pdf_extractor_pypdf_engine_extracts_known_text_from_sample() -> None:
+    """Issue #55: engine="pypdf" で旧エンジンへオプトアウトできる."""
+    # Arrange
+    extractor = PDFExtractor(engine="pypdf")
+    item = Item(id="sample", payload=_FIXTURE_DIR / "sample.pdf")
+
+    # Act
+    text = extractor.extract(item)
+
+    # Assert
+    assert extractor.engine == "pypdf"
+    assert "DigestKit Sample PDF Document" in text
+
+
+def test_pdf_extractor_defaults_to_pypdfium2() -> None:
+    """Issue #55: 既定エンジンは pypdfium2 (CID 埋め込み日本語 PDF の文字化け対策)."""
+    # Arrange / Act
+    extractor = PDFExtractor()
+
+    # Assert
+    assert extractor.engine == "pypdfium2"
+
+
 def test_pdf_extractor_extraction_error_is_digestkit_error() -> None:
     """ExtractionError が DigestkitError を継承している."""
     from digestkit.types import DigestkitError

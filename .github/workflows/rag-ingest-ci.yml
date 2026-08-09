@@ -22,12 +22,28 @@ jobs:
           - os: macos-latest
             python: "3.13"
     runs-on: ${{ matrix.os }}
+    # `astral-sh/setup-uv@v3` は `python-version` 入力を持たない (指定しても
+    # "Unexpected input" 警告を出して無視する)。以前は matrix の宣言に関わらず
+    # uv がランナー既定の Python を拾っており、ubuntu 3.11 / 3.13 が揃って
+    # 3.12.3 を、macOS が python.org 3.11 を実行していた。後者は
+    # `--enable-loadable-sqlite-extensions` 無しでビルドされているため
+    # `sqlite3.Connection.enable_load_extension` を持たず、sqlite-vec の
+    # テストが全滅する。インタプリタを固定して両方を塞ぐ。
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+      UV_PYTHON_DOWNLOADS: never
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-packages --all-extras
+      - name: Assert the interpreter matches the matrix entry
+        run: |
+          uv run python -c "import sys; v='%d.%d' % sys.version_info[:2]; \
+          assert v == '${{ matrix.python }}', f'expected ${{ matrix.python }}, got {v}'; \
+          print('python', sys.version)"
       - name: pyright
         run: uv run --package rag-ingest pyright packages/rag-ingest/src
       - name: ruff

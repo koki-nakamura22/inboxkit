@@ -28,25 +28,27 @@ notification dependencies so it stays usable across both consumers.
 
 ## Installation
 
-> **Note**: digestkit-core is not yet published to PyPI. Install from the
-> umbrella repository's `main` branch using a git URL until the first release.
-
 ```bash
-pip install "digestkit-core @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit-core"
+pip install digestkit-core
 ```
 
 For [uv](https://docs.astral.sh/uv/) projects:
 
 ```toml
 [project]
-dependencies = ["digestkit-core>=0.1,<0.2"]
-
-[tool.uv.sources]
-digestkit-core = { git = "https://github.com/koki-nakamura22/inboxkit.git", subdirectory = "packages/digestkit-core", branch = "main" }
+dependencies = ["digestkit-core>=0.2,<0.3"]
 ```
 
 End users will typically not depend on `digestkit-core` directly. Installing
 `digestkit` or `rag-ingest` pulls it in automatically.
+
+### From git (unreleased changes)
+
+To track `main` ahead of a release:
+
+```bash
+pip install "digestkit-core @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit-core"
+```
 
 ## Neutrality contract
 

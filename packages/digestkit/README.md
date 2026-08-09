@@ -11,19 +11,24 @@ Personal content digester framework: fetch → extract → LLM summarize → sin
 
 ## Installation
 
-> **Note**: digestkit is not yet published to PyPI. Until the first PyPI release,
-> install directly from the umbrella repository's `main` branch using a git URL.
-
-### From git (current)
-
 ```bash
-pip install "digestkit @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit"
+pip install digestkit
 ```
 
 With optional extras:
 
 ```bash
-pip install "digestkit[pdf,notion] @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit"
+pip install "digestkit[pdf,notion]"
+```
+
+See [Optional Dependencies](#optional-dependencies) for what each extra pulls in.
+
+### From git (unreleased changes)
+
+To track `main` ahead of a release:
+
+```bash
+pip install "digestkit @ git+https://github.com/koki-nakamura22/inboxkit.git@main#subdirectory=packages/digestkit"
 ```
 
 For [uv](https://docs.astral.sh/uv/) projects, declare it under `[tool.uv.sources]`:
@@ -37,17 +42,6 @@ digestkit = { git = "https://github.com/koki-nakamura22/inboxkit.git", subdirect
 ```
 
 Pin to a specific commit for reproducibility by replacing `branch = "main"` with `rev = "<sha>"`.
-
-### From PyPI (planned)
-
-Once `digestkit` is published, the standard install path will be:
-
-```bash
-pip install digestkit
-pip install digestkit[pdf,notion]
-```
-
-Tracking issue: [#3](https://github.com/koki-nakamura22/inboxkit/issues/3).
 
 ## Quickstart
 

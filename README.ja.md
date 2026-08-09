@@ -14,9 +14,9 @@
 
 | パッケージ | 役割 | Phase | ステータス |
 |---|---|---|---|
-| [digestkit](./packages/digestkit) | 1:1 パイプライン: fetch → extract → LLM 要約 → sink | Phase 1 | 進行中 (PyPI 公開前) |
-| digestkit-core | `Source` / `Extractor` 共通抽象。2 番目の消費者 (`rag-ingest`) が必要になった時点で抽出 | Phase 2 | 未着手 |
-| rag-ingest | 1:N パイプライン: fetch → extract → chunk → embed → vector store | Phase 2 | 未着手 |
+| [digestkit](./packages/digestkit) | 1:1 パイプライン: fetch → extract → LLM 要約 → sink | Phase 1 | PyPI 公開済み |
+| [digestkit-core](./packages/digestkit-core) | `Source` / `Extractor` 共通抽象。2 番目の消費者 (`rag-ingest`) が必要になった時点で抽出 | Phase 2 | PyPI 公開済み |
+| [rag-ingest](./packages/rag-ingest) | 1:N パイプライン: fetch → extract → chunk → embed → vector store | Phase 2 | 実装済み (PyPI 未公開) |
 | personal-rag | SQLite + sqlite-vec ストア + MCP サーバ。AI コーディングエージェントから個人コーパスを問い合わせる | Phase 3 | 未着手 |
 
 命名のズレについて: umbrella リポジトリ名は `inboxkit` ですが、Phase 1 で PyPI 公開するパッケージ名は `digestkit` です。背景と根拠は [packages/digestkit/README.md](./packages/digestkit/README.md) およびプロジェクトの PRD を参照。

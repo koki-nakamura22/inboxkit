@@ -341,7 +341,7 @@ wheels = [
 
 [[package]]
 name = "digestkit"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/digestkit" }
 dependencies = [
     { name = "digestkit-core" },
@@ -391,7 +391,7 @@ provides-extras = ["pdf", "pdf-pypdf", "web", "notion", "slack", "email", "all"]
 
 [[package]]
 name = "digestkit-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/digestkit-core" }
 
 [package.optional-dependencies]

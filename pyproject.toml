@@ -34,6 +34,10 @@ dev-dependencies = [
     "pyright",
     "pyyaml",  # GitHub Actions yaml validation 用 (T018 verification)
 ]
+# certifi は間接の依存で、版を決めているのは uv.lock だけ。uv.lock の衝突を古い側で解くと、
+# eMudhra (emSign) の侵害で外された emSign ECC Root CA - G3 を信頼する版に気づかず戻る。
+# 下限を制約にしておき、戻ったら `uv lock --check` / `uv sync --locked` で止める。
+constraint-dependencies = ["certifi>=2026.10.19"]
 
 # ============================
 # pytest 設定 (test-strategy.md §1.3 / §5 と整合)
